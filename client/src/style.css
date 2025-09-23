@@ -13,3 +13,15 @@ html,body,#root{height:100%;margin:0;background:linear-gradient(180deg, #071029 
 .main-grid{display:grid;grid-template-columns:360px 1fr;gap:12px;height:calc(100vh - 84px)}
 .info-card, .map-card{background:var(--card);padding:12px;border-radius:12px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
 .info-card p{color:var(--muted);margin:6px 0}
+
+.emergency-banner{
+  background: linear-gradient(90deg,#ff3b30,#ff5e57);
+  color: white;
+  font-weight:700;
+  padding:10px 14px;
+  text-align:center;
+  border-radius:8px;
+  margin:8px 18px;
+  animation: flash 1s linear infinite;
+}
+@keyframes flash{0%{opacity:1}50%{opacity:0.15}100%{opacity:1}}
