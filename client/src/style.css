@@ -14,6 +14,7 @@ html,body,#root{height:100%;margin:0;background:linear-gradient(180deg, #071029 
 .info-card, .map-card{background:var(--card);padding:12px;border-radius:12px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
 .info-card p{color:var(--muted);margin:6px 0}
 
+/* emergency banner */
 .emergency-banner{
   background: linear-gradient(90deg,#ff3b30,#ff5e57);
   color: white;
@@ -25,3 +26,24 @@ html,body,#root{height:100%;margin:0;background:linear-gradient(180deg, #071029 
   animation: flash 1s linear infinite;
 }
 @keyframes flash{0%{opacity:1}50%{opacity:0.15}100%{opacity:1}}
+
+/* Responsive: single-column on narrow screens */
+@media (max-width: 900px) {
+  .main-grid{grid-template-columns:1fr;grid-auto-rows:min-content 1fr;height:auto}
+  .info-card{order:1}
+  .map-card{order:2; height:50vh; min-height:320px}
+}
+
+/* ensure map container children fill available space */
+.leaflet-container{height:100% !important; width:100%}
+
+/* route formatting */
+.route-line { display:inline; }
+.flag { font-size:18px; margin-right:6px; vertical-align:middle; }
+.route-main { vertical-align:middle; }
+
+/* smaller/faded bracket content — applies to text inside parentheses in route-main */
+.route-main .bracket {
+  font-size: 0.85em;
+  color: rgba(230,238,248,0.55);
+  margin-left:6px;

@@ -14,9 +14,9 @@ function haversine(lat1, lon1, lat2, lon2) {
 
 export default function App() {
   const [userPos, setUserPos] = useState(null);
-  const [ac, setAc] = useState(null);
+  const [nearest, setNearest] = useState(null);
   const [others, setOthers] = useState([]);
-  const [showOthersDebug, setShowOthersDebug] = useState(false);
+  const [showOthersList, setShowOthersList] = useState(false);
   const socketRef = useRef(null);
   const [status, setStatus] = useState('connecting');
 
@@ -26,14 +26,14 @@ export default function App() {
     socketRef.current.on('disconnect', () => setStatus('disconnected'));
     socketRef.current.on('error', (e) => console.error('socket error', e));
 
-    socketRef.current.on('update', ({ nearest, others: o }) => {
-      if (!nearest) {
-        setAc(null);
+    socketRef.current.on('update', ({ nearest: n, others: o }) => {
+      if (!n) {
+        setNearest(null);
         setOthers([]);
         return;
       }
-      if (nearest.gs !== undefined && nearest.gs !== null) nearest.gs_mph = (nearest.gs * 1.15078).toFixed(0);
-      setAc(nearest);
+      if (n.gs !== undefined && n.gs !== null) n.gs_mph = (n.gs * 1.15078).toFixed(0);
+      setNearest(n);
       setOthers(o || []);
     });
 
@@ -62,6 +62,9 @@ export default function App() {
     }, { enableHighAccuracy: true, maximumAge: 5000 });
   }, []);
 
+  // ALWAYS show nearest on left card. Others list is read-only (no selection).
+  const shown = nearest;
+
   return (
     <div className="app">
       <header className="topbar">
@@ -69,50 +72,103 @@ export default function App() {
         <small>Status: {status}</small>
       </header>
 
-      {ac && ac.emergency && ac.emergency !== 'none' && (
-        <div className="emergency-banner">EMERGENCY: {ac.emergency}</div>
+      {shown && shown.emergency && shown.emergency !== 'none' && (
+        <div className="emergency-banner">EMERGENCY: {shown.emergency}</div>
       )}
 
       <main className="main-grid">
         <section className="info-card">
-          {!ac && <p>No aircraft data yet.</p>}
-          {ac && (
+          {!shown && <p>No aircraft data yet.</p>}
+
+          {shown && (
             <>
-              <h2>{ac.flight || ac.reg || ac.hex}</h2>
-              <p><strong>Type:</strong> {ac.type || 'unknown'}</p>
-              <p><strong>Registration:</strong> {ac.reg || '—'}</p>
-              <p><strong>Airline / Operator:</strong> {ac.airline || '—'}</p>
-              <p><strong>From:</strong> {ac.from || '—'}</p>
-              <p><strong>To:</strong> {ac.to || '—'}</p>
-              <p><strong>Ground speed:</strong> {ac.gs_mph ? `${ac.gs_mph} mph` : (ac.gs ? `${(ac.gs*1.15078).toFixed(0)} mph` : '—')}</p>
-              <p><strong>Altitude:</strong> {ac.alt_baro ? `${Math.round(ac.alt_baro)} ft` : '—'}</p>
-              <p><strong>Track / Heading:</strong> {ac.track ? `${Math.round(ac.track)}°` : '—'}</p>
-              {userPos && ac.lat && ac.lon && (
-                <p><strong>Distance:</strong> {haversine(userPos.lat, userPos.lon, ac.lat, ac.lon).toFixed(2)} km</p>
+              <h2>{(shown.flight || shown.callsign || shown.reg || shown.hex) || '—'}</h2>
+              <p><strong>Type:</strong> {shown.type || 'unknown'}</p>
+              <p><strong>Registration:</strong> {shown.reg || '—'}</p>
+              <p><strong>Airline / Operator:</strong> {shown.airline || '—'}</p>
+
+              <p>
+                <strong>From:</strong>{' '}
+                {shown.from ? (
+                  <span className="route-line">
+                    {/* Expect server to include emoji at end of string like "Cork (Cork Airport — ORK) 🇮🇪" */}
+                    {/* Normalize to: emoji first, then rest */}
+                    {(() => {
+                      const parts = String(shown.from).trim();
+                      // find emoji at end if present (common case we attach emoji)
+                      const emojiMatch = parts.match(/([\u{1F1E6}-\u{1F1FF}]{2})$/u);
+                      const emoji = emojiMatch ? emojiMatch[0] : '';
+                      const core = emoji ? parts.replace(emoji, '').trim() : parts;
+                      // core looks like "Cork (Cork Airport — ORK)"
+                      return (
+                        <>
+                          {emoji && <span className="flag">{emoji} </span>}
+                          <span className="route-main">{core}</span>
+                        </>
+                      );
+                    })()}
+                  </span>
+                ) : '—'}
+              </p>
+
+              <p>
+                <strong>To:</strong>{' '}
+                {shown.to ? (
+                  <span className="route-line">
+                    {(() => {
+                      const parts = String(shown.to).trim();
+                      const emojiMatch = parts.match(/([\u{1F1E6}-\u{1F1FF}]{2})$/u);
+                      const emoji = emojiMatch ? emojiMatch[0] : '';
+                      const core = emoji ? parts.replace(emoji, '').trim() : parts;
+                      return (
+                        <>
+                          {emoji && <span className="flag">{emoji} </span>}
+                          <span className="route-main">{core}</span>
+                        </>
+                      );
+                    })()}
+                  </span>
+                ) : '—'}
+              </p>
+
+              <p><strong>Ground speed:</strong> {shown.gs_mph ? `${shown.gs_mph} mph` : (shown.gs ? `${(shown.gs*1.15078).toFixed(0)} mph` : '—')}</p>
+              <p><strong>Altitude:</strong> {shown.alt_baro ? `${Math.round(shown.alt_baro)} ft` : '—'}</p>
+              <p><strong>Track / Heading:</strong> {shown.track ? `${Math.round(shown.track)}°` : '—'}</p>
+              {userPos && shown.lat && shown.lon && (
+                <p><strong>Distance:</strong> {haversine(userPos.lat, userPos.lon, shown.lat, shown.lon).toFixed(2)} km</p>
               )}
             </>
           )}
 
           <hr style={{margin:'8px 0'}} />
-          <p><strong>Other planes nearby:</strong> {Array.isArray(others) ? others.length : 0}</p>
-          <button onClick={() => setShowOthersDebug(s => !s)} style={{marginBottom:8}}>
-            {showOthersDebug ? 'Hide' : 'Show'} others (debug)
-          </button>
-          {showOthersDebug && (
-            <div style={{maxHeight:200, overflow:'auto', fontSize:12, color:'#cfe'}}>
-              {others.length === 0 && <div>No other planes returned.</div>}
+
+          <p>
+            <strong style={{cursor:'pointer'}} onClick={() => setShowOthersList(s => !s)}>
+              Other planes nearby: {Array.isArray(others) ? others.length : 0}
+            </strong>
+          </p>
+
+          {showOthersList && (
+            <div style={{maxHeight:260, overflow:'auto', marginTop:8, fontSize:13}}>
+              {others.length === 0 && <div style={{color:'#9aa'}}>No other planes returned.</div>}
               {others.map((o, i) => (
-                <div key={o.hex || `${o.lat}-${o.lon}-${i}`} style={{padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
-                  <div><strong>{o.flight || o.reg || o.hex}</strong> — {o.type || ''}</div>
-                  <div style={{color:'#9aa'}}>{o.lat && o.lon ? `${o.lat.toFixed(4)}, ${o.lon.toFixed(4)}` : 'no coords'}</div>
+                <div key={o.hex || `${o.lat}-${o.lon}-${i}`} style={{padding:'8px', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
+                  <div style={{fontWeight:700}}>
+                    { (o.flight || o.callsign || '—') } { o.number ? `/ ${o.number}` : '' } - { o.airline || '—' }
+                  </div>
+                  <div style={{color:'#cfe', marginTop:6}}>
+                    {/* Show exactly: FLAG CountryName  City  (Airport — IATA) */}
+                    { (o.from_short || o.from || '—') } <span style={{opacity:0.85}}> — </span> { (o.to_short || o.to || '—') }
+                  </div>
                 </div>
               ))}
             </div>
           )}
+
         </section>
 
         <section className="map-card">
-          <MapPlane userPos={userPos} aircraft={ac} others={others} />
+          <MapPlane userPos={userPos} aircraft={nearest} others={others} />
         </section>
       </main>
     </div>

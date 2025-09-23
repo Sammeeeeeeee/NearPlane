@@ -1,10 +1,21 @@
 import React, { useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 
 function Recenter({ center }) {
   const map = useMap();
   useEffect(() => { if (center) map.setView(center, map.getZoom(), { animate: true }); }, [center]);
+  return null;
+}
+
+function MapInvalidate() {
+  const map = useMap();
+  useEffect(() => {
+    const doInvalidate = () => setTimeout(() => { try { map.invalidateSize(); } catch(e){} }, 120);
+    doInvalidate();
+    window.addEventListener('resize', doInvalidate);
+    return () => window.removeEventListener('resize', doInvalidate);
+  }, [map]);
   return null;
 }
 
@@ -26,34 +37,27 @@ export default function MapPlane({ userPos, aircraft, others = [] }) {
     <MapContainer center={center} zoom={11} style={{ height: '100%', borderRadius: 8 }}>
       <TileLayer attribution='© OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
       <Recenter center={center} />
+      <MapInvalidate />
 
       {userPos && (
         <>
-          <Marker position={[userPos.lat, userPos.lon]}>
-            <Popup>Your location</Popup>
-          </Marker>
+          {/* circle only — no "Your location" popup marker */}
           <Circle center={[userPos.lat, userPos.lon]} radius={500} />
         </>
       )}
 
       {others && others.map(o => (
         o && o.lat && o.lon ? (
-          <Marker key={o.hex || `${o.lat}-${o.lon}`} position={[o.lat, o.lon]} icon={createPlaneIcon(o.track || 0, 28, '#999', 0.5)}>
-            <Popup>
-              {o.flight || o.reg || o.hex}<br />
-              {o.type || ''} • {o.alt_baro ? Math.round(o.alt_baro) + ' ft' : ''}
-            </Popup>
-          </Marker>
+          <Marker
+            key={o.hex || `${o.lat}-${o.lon}`}
+            position={[o.lat, o.lon]}
+            icon={createPlaneIcon(o.track || 0, 28, '#999', 0.5)}
+          />
         ) : null
       ))}
 
       {aircraft && aircraft.lat && aircraft.lon && (
-        <Marker position={[aircraft.lat, aircraft.lon]} icon={createPlaneIcon(aircraft.track || 0, 48, '#ffdd57', 1)}>
-          <Popup>
-            {aircraft.flight || aircraft.reg || aircraft.hex}<br />
-            {aircraft.type} • {aircraft.alt_baro ? Math.round(aircraft.alt_baro) + ' ft' : ''}
-          </Popup>
-        </Marker>
+        <Marker position={[aircraft.lat, aircraft.lon]} icon={createPlaneIcon(aircraft.track || 0, 48, '#ffdd57', 1)} />
       )}
     </MapContainer>
   );
