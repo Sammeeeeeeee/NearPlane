@@ -1,0 +1,15 @@
+:root{
+  --bg: #0f1724;
+  --card: #0b1220;
+  --muted: #9aa4b2;
+  --accent: #7c3aed;
+  --glass: rgba(255,255,255,0.03);
+}
+
+html,body,#root{height:100%;margin:0;background:linear-gradient(180deg, #071029 0%, #0f1724 100%);font-family:Inter,Segoe UI,Roboto,Arial;color:#e6eef8}
+.app{padding:18px}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.topbar h1{margin:0;font-size:20px}
+.main-grid{display:grid;grid-template-columns:360px 1fr;gap:12px;height:calc(100vh - 84px)}
+.info-card, .map-card{background:var(--card);padding:12px;border-radius:12px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+.info-card p{color:var(--muted);margin:6px 0}
