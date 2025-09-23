@@ -15,29 +15,32 @@ function haversine(lat1, lon1, lat2, lon2) {
 export default function App() {
   const [userPos, setUserPos] = useState(null);
   const [ac, setAc] = useState(null);
+  const [others, setOthers] = useState([]);
+  const [showOthersDebug, setShowOthersDebug] = useState(false);
   const socketRef = useRef(null);
   const [status, setStatus] = useState('connecting');
 
   useEffect(() => {
-    socketRef.current = io(); // same origin
+    socketRef.current = io();
     socketRef.current.on('connect', () => setStatus('connected'));
     socketRef.current.on('disconnect', () => setStatus('disconnected'));
     socketRef.current.on('error', (e) => console.error('socket error', e));
 
-    socketRef.current.on('update', ({ nearest }) => {
-      if (!nearest) return setAc(null);
-      // convert ground speed (knots) to mph
-      if (nearest.gs !== undefined && nearest.gs !== null) {
-        nearest.gs_mph = (nearest.gs * 1.15078).toFixed(0);
+    socketRef.current.on('update', ({ nearest, others: o }) => {
+      if (!nearest) {
+        setAc(null);
+        setOthers([]);
+        return;
       }
+      if (nearest.gs !== undefined && nearest.gs !== null) nearest.gs_mph = (nearest.gs * 1.15078).toFixed(0);
       setAc(nearest);
+      setOthers(o || []);
     });
 
     return () => socketRef.current && socketRef.current.disconnect();
   }, []);
 
   useEffect(() => {
-    // subscribe with browser geolocation; server overrides if OVERRIDE_LAT/OVERRIDE_LON set
     const subscribeWith = (p) => {
       setUserPos(p);
       socketRef.current && socketRef.current.emit('subscribe', { ...p, pollMs: 5000 });
@@ -89,10 +92,27 @@ export default function App() {
               )}
             </>
           )}
+
+          <hr style={{margin:'8px 0'}} />
+          <p><strong>Other planes nearby:</strong> {Array.isArray(others) ? others.length : 0}</p>
+          <button onClick={() => setShowOthersDebug(s => !s)} style={{marginBottom:8}}>
+            {showOthersDebug ? 'Hide' : 'Show'} others (debug)
+          </button>
+          {showOthersDebug && (
+            <div style={{maxHeight:200, overflow:'auto', fontSize:12, color:'#cfe'}}>
+              {others.length === 0 && <div>No other planes returned.</div>}
+              {others.map((o, i) => (
+                <div key={o.hex || `${o.lat}-${o.lon}-${i}`} style={{padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
+                  <div><strong>{o.flight || o.reg || o.hex}</strong> — {o.type || ''}</div>
+                  <div style={{color:'#9aa'}}>{o.lat && o.lon ? `${o.lat.toFixed(4)}, ${o.lon.toFixed(4)}` : 'no coords'}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="map-card">
-          <MapPlane userPos={userPos} aircraft={ac} />
+          <MapPlane userPos={userPos} aircraft={ac} others={others} />
         </section>
       </main>
     </div>
