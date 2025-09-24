@@ -8,14 +8,20 @@ function Recenter({ center }) {
   return null;
 }
 
-function MapInvalidate() {
+function MapInvalidate({ center }) {
   const map = useMap();
   useEffect(() => {
-    const doInvalidate = () => setTimeout(() => { try { map.invalidateSize(); } catch(e){} }, 120);
+    const doInvalidate = () => setTimeout(() => { try { map.invalidateSize(); } catch(e){} }, 300);
     doInvalidate();
     window.addEventListener('resize', doInvalidate);
     return () => window.removeEventListener('resize', doInvalidate);
   }, [map]);
+
+  useEffect(() => {
+    const t = setTimeout(() => { try { map.invalidateSize(); } catch(e){} }, 350);
+    return () => clearTimeout(t);
+  }, [center, map]);
+
   return null;
 }
 
@@ -37,18 +43,15 @@ export default function MapPlane({ userPos, aircraft, others = [] }) {
     <MapContainer center={center} zoom={11} style={{ height: '100%', borderRadius: 8 }}>
       <TileLayer attribution='© OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
       <Recenter center={center} />
-      <MapInvalidate />
+      <MapInvalidate center={center} />
 
       {userPos && (
         <>
-          {/* Blue circle marker for user location (small dot) */}
           <CircleMarker center={[userPos.lat, userPos.lon]} radius={7} pathOptions={{ color: '#1e90ff', fillColor: '#1e90ff', fillOpacity: 0.9, weight: 0 }} />
-          {/* faint ring around user */}
           <Circle center={[userPos.lat, userPos.lon]} radius={500} pathOptions={{ color: '#1e90ff', opacity: 0.12, weight: 1 }} />
         </>
       )}
 
-      {/* others: small, visible, non-interactive */}
       {Array.isArray(others) && others.map((o, i) => (
         o && o.lat && o.lon ? (
           <Marker
@@ -61,7 +64,6 @@ export default function MapPlane({ userPos, aircraft, others = [] }) {
         ) : null
       ))}
 
-      {/* nearest: larger, full-opacity */}
       {aircraft && aircraft.lat && aircraft.lon && (
         <Marker
           position={[aircraft.lat, aircraft.lon]}
