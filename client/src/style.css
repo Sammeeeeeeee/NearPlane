@@ -6,15 +6,27 @@
   --glass: rgba(255,255,255,0.03);
 }
 
-html,body,#root{height:100%;margin:0;background:linear-gradient(180deg, #071029 0%, #0f1724 100%);font-family:Inter,Segoe UI,Roboto,Arial;color:#e6eef8}
-.app{padding:18px}
-.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-.topbar h1{margin:0;font-size:20px}
-.main-grid{display:grid;grid-template-columns:360px 1fr;gap:12px;height:calc(100vh - 84px)}
-.info-card, .map-card{background:var(--card);padding:12px;border-radius:12px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
-.info-card p{color:var(--muted);margin:6px 0}
+/* Base */
+html,body,#root{
+  height:100%;
+  margin:0;
+  background:linear-gradient(180deg, #071029 0%, #0f1724 100%);
+  font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+  color:#e6eef8;
+}
+.app{ padding:18px; }
+.topbar{ display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+.topbar h1{ margin:0; font-size:20px; }
+.main-grid{ display:grid; grid-template-columns:360px 1fr; gap:12px; height:calc(100vh - 84px); }
+.info-card, .map-card{
+  background:var(--card);
+  padding:12px;
+  border-radius:12px;
+  box-shadow:0 6px 18px rgba(2,6,23,0.6);
+}
+.info-card p{ color:var(--muted); margin:6px 0; }
 
-/* emergency banner */
+/* Emergency banner */
 .emergency-banner{
   background: linear-gradient(90deg,#ff3b30,#ff5e57);
   color: white;
@@ -25,121 +37,84 @@ html,body,#root{height:100%;margin:0;background:linear-gradient(180deg, #071029 
   margin:8px 18px;
   animation: flash 1s linear infinite;
 }
-@keyframes flash{0%{opacity:1}50%{opacity:0.15}100%{opacity:1}}
+@keyframes flash{ 0%{opacity:1} 50%{opacity:0.15} 100%{opacity:1} }
 
-
-
-
-/* route formatting */
-.route-line { display:inline; }
-
-
-/* ensure .map-card has a min height on mobile */
-@media (max-width: 900px) {
-  .map-card{ height:50vh; min-height:280px; }
-}
-
-
-/* route single-line & emoji alignment fixes */
-.route-singleline { 
-  display:inline-flex;
-  align-items:center;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  gap:0.5ch;
-}
-.flag { 
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  width:22px;
-  height:20px;
-  text-align:center;
-  line-height:1;
-  font-size:18px;
-  vertical-align:middle;
-  margin-right:6px;
-  transform: translateY(1px); /* nudges emoji into visual center */
-}
-.route-main { vertical-align:middle; display:inline-block; }
-.bracket { 
-  font-size:0.88em; 
-  color: rgba(230,238,248,0.6); 
-  margin-left:6px;
-  vertical-align:middle;
-}
-
-/* leaflet container */
-.leaflet-container{height:100% !important; width:100%}
-
-/* map-card mobile min-height */
-@media (max-width: 900px) {
-  .map-card{ height:50vh; min-height:280px; }
-}
-
-
-:root{
-  --bg: #0f1724;
-  --card: #0b1220;
-  --muted: #9aa4b2;
-  --accent: #7c3aed;
-  --glass: rgba(255,255,255,0.03);
-}
-
-html,body,#root{height:100%;margin:0;background:linear-gradient(180deg, #071029 0%, #0f1724 100%);font-family:Inter,Segoe UI,Roboto,Arial;color:#e6eef8}
-.app{padding:18px}
-.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-.topbar h1{margin:0;font-size:20px}
-.main-grid{display:grid;grid-template-columns:360px 1fr;gap:12px;height:calc(100vh - 84px)}
-.info-card, .map-card{background:var(--card);padding:12px;border-radius:12px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
-.info-card p{color:var(--muted);margin:6px 0}
-
-/* emergency banner */
-.emergency-banner{
-  background: linear-gradient(90deg,#ff3b30,#ff5e57);
-  color: white;
-  font-weight:700;
-  padding:10px 14px;
-  text-align:center;
-  border-radius:8px;
-  margin:8px 18px;
-  animation: flash 1s linear infinite;
-}
-@keyframes flash{0%{opacity:1}50%{opacity:0.15}100%{opacity:1}}
-
-/* ROUTE WRAPPING: allow From/To to wrap onto next line when long */
+/* --- ROUTE / FROM-TO styling --- */
+/* .route-wrapping: allow long text to wrap to next line (default) */
 .route-wrapping {
-  display:inline-flex;
-  align-items:center;
-  gap:0.5ch;
-  white-space:normal; /* allow wrapping */
-  word-break:break-word;
-  line-height:1.1;
+  display: flex;
+  flex-wrap: wrap;        /* allow wrapping to next line */
+  align-items: flex-start;/* align flag to first line top */
+  gap: 0.4rem;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.15;
+  max-width: 100%;
 }
+
+/* If you later want forced single-line use .route-singleline */
+.route-singleline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
 .flag {
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  width:22px;
-  height:20px;
-  font-size:18px;
-  margin-right:6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 20px;
+  font-size: 18px;
+  line-height: 1;
+  margin-right: 6px;
+  /* placing at top of wrapped block: */
+  align-self: flex-start;
   transform: translateY(0px);
 }
-.route-main { display:inline-block; vertical-align:middle; }
-.bracket { font-size:0.88em; color: rgba(230,238,248,0.6); margin-left:6px; }
 
-/* make sure the left info column doesn't force wrap and retains layout */
+/* main city text — bold */
+.route-main {
+  font-weight: 600;
+  color: #e6eef8;
+  display: inline-block;
+}
+
+/* bracket / airport info — smaller and faded; allow to sit on same or next line */
+.bracket {
+  font-size: 0.88em;
+  color: rgba(230,238,248,0.68);
+  margin-left: 6px;
+  display: inline-block;
+}
+
+/* Ensure left column can shrink nicely */
 .info-card { min-width: 0; }
 
-/* leaflet container */
-.leaflet-container{height:100% !important; width:100% !important; min-height: 280px !important;}
-
-/* mobile */
-@media (max-width: 900px) {
-  .main-grid{grid-template-columns:1fr;grid-auto-rows:min-content 1fr;height:auto}
-  .info-card{order:1}
-  .map-card{order:2; height:50vh; min-height:320px}
-  .map-card{height:50vh; min-height:300px;}
+/* --- Leaflet / Map sizing --- */
+.leaflet-container {
+  height:100% !important;
+  width:100% !important;
+  min-height: 280px !important;
 }
+
+/* Restore blue user-dot look: CircleMarker used in MapPlane.jsx */
+.map-card { min-height: 320px; }
+
+/* Mobile layout */
+@media (max-width: 900px) {
+  .main-grid{
+    grid-template-columns:1fr;
+    grid-auto-rows:min-content 1fr;
+    height:auto;
+  }
+  .info-card{ order:1; }
+  .map-card{ order:2; height:50vh; min-height:300px; }
+}
+
+/* small adjustments for visual consistency */
+hr { border: none; border-top: 1px solid rgba(255,255,255,0.03); margin: 8px 0; }

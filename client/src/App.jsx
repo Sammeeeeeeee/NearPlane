@@ -1,10 +1,12 @@
+// client/src/App.jsx
 import React, { useEffect, useState, useRef } from 'react';
 import io from 'socket.io-client';
 import MapPlane from './MapPlane';
 
-function haversine(lat1, lon1, lat2, lon2) {
+/* Utility: haversine distance in km */
+function haversineKm(lat1, lon1, lat2, lon2) {
   if (!lat1 || !lon1 || !lat2 || !lon2) return null;
-  const R = 6371; // km
+  const R = 6371;
   const toRad = v => v * Math.PI / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
@@ -13,19 +15,27 @@ function haversine(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// Render "🇮🇪 Cork (ORK - Cork Airport)" style with emoji aligned, bracket small/faded
+/* Render airport block: wraps to the next line if long, shows flag emoji, city and bracketed airport code/name */
 function renderAirportShort(obj) {
   if (!obj) return '—';
-  // build flag properly (two regional indicators)
-  const emoji = obj.countryiso ? String.fromCodePoint(...obj.countryiso.toUpperCase().split('').map(c=>127397 + c.charCodeAt(0))) : '';
-  const city = obj.city || '';
-  const iata = obj.iata || '';
-  const name = obj.name || '';
+
+  // obj expected shape: { city, location, iata, name, countryiso }
+  const cc = (obj.countryiso || obj.country || '').toUpperCase();
+  const emoji = (cc && cc.length === 2)
+    ? String.fromCodePoint(...cc.split('').map(c => 127397 + c.charCodeAt(0)))
+    : '';
+
+  const city = obj.city || obj.location || '';
+  const iata = obj.iata || obj.iata_code || obj.iata_code || '';
+  const name = obj.name || obj.name || '';
+
   return (
-    <span className="route-singleline">
-      {emoji ? <span className="flag">{emoji}</span> : null}
-      <span className="route-main">{city}</span>
-      <span className="bracket"> ({iata ? iata + ' - ' + name : name})</span>
+    <span className="route-wrapping" style={{maxWidth:'100%'}}>
+      {emoji ? <span className="flag" aria-hidden>{emoji}</span> : null}
+      <span style={{display:'inline-flex', flexDirection:'row', flexWrap:'wrap', gap:'0.4rem', alignItems:'baseline'}}>
+        <span className="route-main">{city || '—'}</span>
+        <span className="bracket">({iata ? `${iata} - ${name}` : name})</span>
+      </span>
     </span>
   );
 }
@@ -36,45 +46,61 @@ export default function App() {
   const [others, setOthers] = useState([]);
   const [othersTotal, setOthersTotal] = useState(0);
   const [showOthersList, setShowOthersList] = useState(false);
+  const [status, setStatus] = useState('connecting');
+
   const socketRef = useRef(null);
   const lastPosRef = useRef(null);
   const subscribedRef = useRef(false);
-  const [status, setStatus] = useState('connecting');
 
   useEffect(() => {
-    socketRef.current = io();
+    // connect to same-origin socket.io
+    const socket = io();
+    socketRef.current = socket;
 
-    socketRef.current.on('connect', () => {
+    socket.on('connect', () => {
       setStatus('connected');
+      // if we already have position, ensure subscription
       if (!subscribedRef.current && lastPosRef.current) {
-        socketRef.current.emit('subscribe', { ...lastPosRef.current });
+        socket.emit('subscribe', { ...lastPosRef.current });
         subscribedRef.current = true;
       }
     });
 
-    socketRef.current.on('disconnect', () => {
+    socket.on('disconnect', () => {
       setStatus('disconnected');
       subscribedRef.current = false;
     });
 
-    socketRef.current.on('update', ({ nearest: n, others: o, othersTotal: total }) => {
+    socket.on('error', (e) => {
+      console.error('socket error', e);
+    });
+
+    socket.on('update', ({ nearest: n, others: o, othersTotal: total }) => {
       if (!n) {
         setNearest(null);
-        setOthers([]);
-        setOthersTotal(total || 0);
+        setOthers(Array.isArray(o) ? o : []);
+        setOthersTotal(total || (Array.isArray(o) ? o.length : 0));
         return;
       }
-      if (n.gs !== undefined && n.gs !== null) n.gs_mph = (n.gs * 1.15078).toFixed(0);
+
+      // convert ground speed (knots) to mph and round
+      if (n.gs !== undefined && n.gs !== null) {
+        n.gs_mph = Math.round(Number(n.gs) * 1.15078);
+      }
+
       setNearest(n);
       setOthers(Array.isArray(o) ? o : []);
       setOthersTotal(total || (Array.isArray(o) ? o.length : 0));
     });
 
-    socketRef.current.on('error', (e) => console.error('socket error', e));
-    return () => socketRef.current && socketRef.current.disconnect();
+    return () => {
+      try { socket.disconnect(); } catch (e) {}
+      socketRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
+    // subscribe with browser geolocation (server-side overrides env if set)
     function doSubscribe(pos) {
       lastPosRef.current = pos;
       setUserPos(pos);
@@ -85,19 +111,20 @@ export default function App() {
     }
 
     if (!navigator.geolocation) {
+      // fallback
       doSubscribe({ lat: 51.623842, lon: -0.269584 });
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(position => {
-      doSubscribe({ lat: position.coords.latitude, lon: position.coords.longitude });
-    }, err => {
-      console.warn('geolocation failed', err);
+    navigator.geolocation.getCurrentPosition((p) => {
+      doSubscribe({ lat: p.coords.latitude, lon: p.coords.longitude });
+    }, (err) => {
+      console.warn('geolocation failed, falling back', err);
       doSubscribe({ lat: 51.623842, lon: -0.269584 });
     }, { enableHighAccuracy: true, maximumAge: 5000 });
   }, []);
 
-  const shown = nearest;
+  const shown = nearest; // left info always shows nearest (never selectable from others)
 
   return (
     <div className="app">
@@ -116,27 +143,56 @@ export default function App() {
 
           {shown && (
             <>
-              <h2>{(shown.flight || shown.callsign || shown.reg || shown.hex) || '—'}</h2>
-              <p><strong>Type:</strong> {shown.type || 'unknown'}</p>
-              <p><strong>Registration:</strong> {shown.reg || '—'}</p>
-              <p><strong>Airline / Operator:</strong> {shown.airline || '—'}</p>
+              <div style={{display:'flex', gap:12, alignItems:'center'}}>
+                <div style={{
+                  width:120, height:80, borderRadius:8, overflow:'hidden',
+                  background:'#06111b', display:'flex', alignItems:'center', justifyContent:'center'
+                }}>
+                  {shown.thumb ? (
+                    <img src={shown.thumb} alt="aircraft" style={{width:'100%', height:'100%', objectFit:'cover', display:'block'}} />
+                  ) : (
+                    <div style={{color:'#6aa', fontSize:13, padding:6, textAlign:'center'}}>No image</div>
+                  )}
+                </div>
 
-              <p><strong>From:</strong>{' '}
-                {shown.from_obj ? renderAirportShort(shown.from_obj) : (shown.from ? <span className="route-singleline">{shown.from}</span> : '—')}
-              </p>
+                <div style={{flex:1, minWidth:0}}>
+                  <h2 style={{margin:'0 0 6px 0', overflowWrap:'anywhere', fontSize:18}}>
+                    {(shown.flight || shown.callsign || shown.reg || shown.hex) || '—'}
+                  </h2>
+                  <div style={{color:'#9aa', fontSize:13, display:'grid', gap:6}}>
+                    <div><strong>Type:</strong> {shown.type || 'unknown'}</div>
+                    <div><strong>Registration:</strong> {shown.reg || '—'}</div>
+                    <div><strong>Airline / Operator:</strong> {shown.airline || '—'}</div>
+                  </div>
+                </div>
+              </div>
 
-              <p><strong>To:</strong>{' '}
-                {shown.to_obj ? renderAirportShort(shown.to_obj) : (shown.to ? <span className="route-singleline">{shown.to}</span> : '—')}
-              </p>
+              <div style={{height:10}} />
 
-              <p><strong>Ground speed:</strong> {shown.gs_mph ? `${shown.gs_mph} mph` : (shown.gs ? `${(shown.gs*1.15078).toFixed(0)} mph` : '—')}</p>
-              <p><strong>Altitude:</strong> {shown.alt_baro ? `${Math.round(shown.alt_baro)} ft` : '—'}</p>
-              <p><strong>Track / Heading:</strong> {shown.track ? `${Math.round(shown.track)}°` : '—'}</p>
-              {userPos && shown.lat && shown.lon && (<p><strong>Distance:</strong> {haversine(userPos.lat, userPos.lon, shown.lat, shown.lon).toFixed(2)} km</p>)}
+              <div style={{display:'flex', flexDirection:'column', gap:6}}>
+                <div>
+                  <strong>From:</strong>{' '}
+                  {shown.from_obj ? renderAirportShort(shown.from_obj) : (shown.from ? <span className="route-wrapping">{shown.from}</span> : '—')}
+                </div>
+                <div>
+                  <strong>To:</strong>{' '}
+                  {shown.to_obj ? renderAirportShort(shown.to_obj) : (shown.to ? <span className="route-wrapping">{shown.to}</span> : '—')}
+                </div>
+              </div>
+
+              <div style={{height:8}} />
+              <div style={{color:'#cfe', display:'grid', gap:6}}>
+                <div><strong>Ground speed:</strong> {shown.gs_mph ? `${shown.gs_mph} mph` : (shown.gs ? `${Math.round(shown.gs * 1.15078)} mph` : '—')}</div>
+                <div><strong>Altitude:</strong> {shown.alt_baro ? `${Math.round(shown.alt_baro)} ft` : '—'}</div>
+                <div><strong>Track / Heading:</strong> {shown.track ? `${Math.round(shown.track)}°` : '—'}</div>
+                {userPos && shown.lat && shown.lon && (
+                  <div><strong>Distance:</strong> {haversineKm(userPos.lat, userPos.lon, shown.lat, shown.lon).toFixed(2)} km</div>
+                )}
+              </div>
             </>
           )}
 
-          <hr style={{margin:'8px 0'}} />
+          <hr />
 
           <p>
             <strong style={{cursor:'pointer'}} onClick={() => setShowOthersList(s => !s)}>
@@ -148,12 +204,25 @@ export default function App() {
             <div style={{maxHeight:260, overflow:'auto', marginTop:8, fontSize:13}}>
               {others.length === 0 && <div style={{color:'#9aa'}}>No other planes returned.</div>}
               {others.map((o, i) => (
-                <div key={o.hex || `${o.lat}-${o.lon}-${i}`} style={{padding:'8px', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
-                  <div style={{fontWeight:700}}>
-                    { (o.flight || o.callsign || '—') }{ o.number ? ` / ${o.number}` : '' } <span style={{marginLeft:10, color:'#cfe'}}>{o.airline || '—'}</span>
+                <div key={o.hex || `${o.lat}-${o.lon}-${i}`} style={{padding:'8px 6px', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
+                  <div style={{fontWeight:700, display:'flex', justifyContent:'space-between', alignItems:'center', gap:8}}>
+                    <div style={{display:'flex', gap:10, alignItems:'center', minWidth:0}}>
+                      <div style={{fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                        {(o.flight || o.callsign || '—')}{ o.number ? ` / ${o.number}` : '' }
+                      </div>
+                      <div style={{color:'#cfe', fontSize:13, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                        {o.airline || '—'}
+                      </div>
+                    </div>
+                    <div style={{color:'#9aa', fontSize:12, minWidth:60, textAlign:'right'}}>
+                      {o.dst ? `${Number(o.dst).toFixed(1)} km` : (o.lat && userPos ? `${haversineKm(userPos.lat, userPos.lon, o.lat, o.lon).toFixed(1)} km` : '—')}
+                    </div>
                   </div>
+
                   <div style={{color:'#cfe', marginTop:6}}>
-                    <div style={{fontSize:13, opacity:0.95}}>{ o.type ? `${o.type}` : '' }{ o.type ? ' • ' : '' }{ o.reg ? `${o.reg}` : '' }</div>
+                    <div style={{fontSize:13, opacity:0.95}}>
+                      { o.type ? `${o.type}` : '' }{ o.type ? ' • ' : '' }{ o.reg ? `${o.reg}` : '' }
+                    </div>
                     <div style={{marginTop:6}}>
                       { o.from_obj ? renderAirportShort(o.from_obj) : (o.from || '—') }
                       <span style={{opacity:0.85}}> — </span>
@@ -162,7 +231,10 @@ export default function App() {
                   </div>
                 </div>
               ))}
-              {othersTotal > others.length && <div style={{padding:10,color:'#9aa',textAlign:'center'}}>… showing {others.length} of {othersTotal}</div>}
+
+              {othersTotal > others.length && (
+                <div style={{padding:10, color:'#9aa', textAlign:'center'}}>… showing {others.length} of {othersTotal}</div>
+              )}
             </div>
           )}
 
