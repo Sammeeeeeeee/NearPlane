@@ -77,3 +77,69 @@ html,body,#root{height:100%;margin:0;background:linear-gradient(180deg, #071029 
 @media (max-width: 900px) {
   .map-card{ height:50vh; min-height:280px; }
 }
+
+
+:root{
+  --bg: #0f1724;
+  --card: #0b1220;
+  --muted: #9aa4b2;
+  --accent: #7c3aed;
+  --glass: rgba(255,255,255,0.03);
+}
+
+html,body,#root{height:100%;margin:0;background:linear-gradient(180deg, #071029 0%, #0f1724 100%);font-family:Inter,Segoe UI,Roboto,Arial;color:#e6eef8}
+.app{padding:18px}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.topbar h1{margin:0;font-size:20px}
+.main-grid{display:grid;grid-template-columns:360px 1fr;gap:12px;height:calc(100vh - 84px)}
+.info-card, .map-card{background:var(--card);padding:12px;border-radius:12px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+.info-card p{color:var(--muted);margin:6px 0}
+
+/* emergency banner */
+.emergency-banner{
+  background: linear-gradient(90deg,#ff3b30,#ff5e57);
+  color: white;
+  font-weight:700;
+  padding:10px 14px;
+  text-align:center;
+  border-radius:8px;
+  margin:8px 18px;
+  animation: flash 1s linear infinite;
+}
+@keyframes flash{0%{opacity:1}50%{opacity:0.15}100%{opacity:1}}
+
+/* ROUTE WRAPPING: allow From/To to wrap onto next line when long */
+.route-wrapping {
+  display:inline-flex;
+  align-items:center;
+  gap:0.5ch;
+  white-space:normal; /* allow wrapping */
+  word-break:break-word;
+  line-height:1.1;
+}
+.flag {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:22px;
+  height:20px;
+  font-size:18px;
+  margin-right:6px;
+  transform: translateY(0px);
+}
+.route-main { display:inline-block; vertical-align:middle; }
+.bracket { font-size:0.88em; color: rgba(230,238,248,0.6); margin-left:6px; }
+
+/* make sure the left info column doesn't force wrap and retains layout */
+.info-card { min-width: 0; }
+
+/* leaflet container */
+.leaflet-container{height:100% !important; width:100% !important; min-height: 280px !important;}
+
+/* mobile */
+@media (max-width: 900px) {
+  .main-grid{grid-template-columns:1fr;grid-auto-rows:min-content 1fr;height:auto}
+  .info-card{order:1}
+  .map-card{order:2; height:50vh; min-height:320px}
+  .map-card{height:50vh; min-height:300px;}
+}
