@@ -27,23 +27,53 @@ html,body,#root{height:100%;margin:0;background:linear-gradient(180deg, #071029 
 }
 @keyframes flash{0%{opacity:1}50%{opacity:0.15}100%{opacity:1}}
 
-/* Responsive: single-column on narrow screens */
-@media (max-width: 900px) {
-  .main-grid{grid-template-columns:1fr;grid-auto-rows:min-content 1fr;height:auto}
-  .info-card{order:1}
-  .map-card{order:2; height:50vh; min-height:320px}
-}
 
-/* ensure map container children fill available space */
-.leaflet-container{height:100% !important; width:100%}
+
 
 /* route formatting */
 .route-line { display:inline; }
-.flag { font-size:18px; margin-right:6px; vertical-align:middle; }
-.route-main { vertical-align:middle; }
 
-/* smaller/faded bracket content — applies to text inside parentheses in route-main */
-.route-main .bracket {
-  font-size: 0.85em;
-  color: rgba(230,238,248,0.55);
+
+/* ensure .map-card has a min height on mobile */
+@media (max-width: 900px) {
+  .map-card{ height:50vh; min-height:280px; }
+}
+
+
+/* route single-line & emoji alignment fixes */
+.route-singleline { 
+  display:inline-flex;
+  align-items:center;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  gap:0.5ch;
+}
+.flag { 
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:22px;
+  height:20px;
+  text-align:center;
+  line-height:1;
+  font-size:18px;
+  vertical-align:middle;
+  margin-right:6px;
+  transform: translateY(1px); /* nudges emoji into visual center */
+}
+.route-main { vertical-align:middle; display:inline-block; }
+.bracket { 
+  font-size:0.88em; 
+  color: rgba(230,238,248,0.6); 
   margin-left:6px;
+  vertical-align:middle;
+}
+
+/* leaflet container */
+.leaflet-container{height:100% !important; width:100%}
+
+/* map-card mobile min-height */
+@media (max-width: 900px) {
+  .map-card{ height:50vh; min-height:280px; }
+}

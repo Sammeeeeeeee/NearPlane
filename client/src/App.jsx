@@ -3,6 +3,7 @@ import io from 'socket.io-client';
 import MapPlane from './MapPlane';
 
 function haversine(lat1, lon1, lat2, lon2) {
+  if (!lat1 || !lon1 || !lat2 || !lon2) return null;
   const R = 6371; // km
   const toRad = v => v * Math.PI / 180;
   const dLat = toRad(lat2 - lat1);
@@ -12,57 +13,90 @@ function haversine(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+// Render "🇮🇪 Cork (ORK - Cork Airport)" style with emoji aligned, bracket small/faded
+function renderAirportShort(obj) {
+  if (!obj) return '—';
+  // build flag properly (two regional indicators)
+  const emoji = obj.countryiso ? String.fromCodePoint(...obj.countryiso.toUpperCase().split('').map(c=>127397 + c.charCodeAt(0))) : '';
+  const city = obj.city || '';
+  const iata = obj.iata || '';
+  const name = obj.name || '';
+  return (
+    <span className="route-singleline">
+      {emoji ? <span className="flag">{emoji}</span> : null}
+      <span className="route-main">{city}</span>
+      <span className="bracket"> ({iata ? iata + ' - ' + name : name})</span>
+    </span>
+  );
+}
+
 export default function App() {
   const [userPos, setUserPos] = useState(null);
   const [nearest, setNearest] = useState(null);
   const [others, setOthers] = useState([]);
+  const [othersTotal, setOthersTotal] = useState(0);
   const [showOthersList, setShowOthersList] = useState(false);
   const socketRef = useRef(null);
+  const lastPosRef = useRef(null);
+  const subscribedRef = useRef(false);
   const [status, setStatus] = useState('connecting');
 
   useEffect(() => {
     socketRef.current = io();
-    socketRef.current.on('connect', () => setStatus('connected'));
-    socketRef.current.on('disconnect', () => setStatus('disconnected'));
-    socketRef.current.on('error', (e) => console.error('socket error', e));
 
-    socketRef.current.on('update', ({ nearest: n, others: o }) => {
+    socketRef.current.on('connect', () => {
+      setStatus('connected');
+      if (!subscribedRef.current && lastPosRef.current) {
+        socketRef.current.emit('subscribe', { ...lastPosRef.current });
+        subscribedRef.current = true;
+      }
+    });
+
+    socketRef.current.on('disconnect', () => {
+      setStatus('disconnected');
+      subscribedRef.current = false;
+    });
+
+    socketRef.current.on('update', ({ nearest: n, others: o, othersTotal: total }) => {
       if (!n) {
         setNearest(null);
         setOthers([]);
+        setOthersTotal(total || 0);
         return;
       }
       if (n.gs !== undefined && n.gs !== null) n.gs_mph = (n.gs * 1.15078).toFixed(0);
       setNearest(n);
-      setOthers(o || []);
+      setOthers(Array.isArray(o) ? o : []);
+      setOthersTotal(total || (Array.isArray(o) ? o.length : 0));
     });
 
+    socketRef.current.on('error', (e) => console.error('socket error', e));
     return () => socketRef.current && socketRef.current.disconnect();
   }, []);
 
   useEffect(() => {
-    const subscribeWith = (p) => {
-      setUserPos(p);
-      socketRef.current && socketRef.current.emit('subscribe', { ...p, pollMs: 5000 });
-    };
+    function doSubscribe(pos) {
+      lastPosRef.current = pos;
+      setUserPos(pos);
+      if (socketRef.current && socketRef.current.connected && !subscribedRef.current) {
+        socketRef.current.emit('subscribe', { ...pos });
+        subscribedRef.current = true;
+      }
+    }
 
     if (!navigator.geolocation) {
-      const fallback = { lat: 51.623842, lon: -0.269584 };
-      subscribeWith(fallback);
+      doSubscribe({ lat: 51.623842, lon: -0.269584 });
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(pos => {
-      const p = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-      subscribeWith(p);
+    navigator.geolocation.getCurrentPosition(position => {
+      doSubscribe({ lat: position.coords.latitude, lon: position.coords.longitude });
     }, err => {
-      console.warn('geolocation failed, using fallback', err);
-      const fallback = { lat: 51.623842, lon: -0.269584 };
-      subscribeWith(fallback);
+      console.warn('geolocation failed', err);
+      doSubscribe({ lat: 51.623842, lon: -0.269584 });
     }, { enableHighAccuracy: true, maximumAge: 5000 });
   }, []);
 
-  // ALWAYS show nearest on left card. Others list is read-only (no selection).
   const shown = nearest;
 
   return (
@@ -87,56 +121,18 @@ export default function App() {
               <p><strong>Registration:</strong> {shown.reg || '—'}</p>
               <p><strong>Airline / Operator:</strong> {shown.airline || '—'}</p>
 
-              <p>
-                <strong>From:</strong>{' '}
-                {shown.from ? (
-                  <span className="route-line">
-                    {/* Expect server to include emoji at end of string like "Cork (Cork Airport — ORK) 🇮🇪" */}
-                    {/* Normalize to: emoji first, then rest */}
-                    {(() => {
-                      const parts = String(shown.from).trim();
-                      // find emoji at end if present (common case we attach emoji)
-                      const emojiMatch = parts.match(/([\u{1F1E6}-\u{1F1FF}]{2})$/u);
-                      const emoji = emojiMatch ? emojiMatch[0] : '';
-                      const core = emoji ? parts.replace(emoji, '').trim() : parts;
-                      // core looks like "Cork (Cork Airport — ORK)"
-                      return (
-                        <>
-                          {emoji && <span className="flag">{emoji} </span>}
-                          <span className="route-main">{core}</span>
-                        </>
-                      );
-                    })()}
-                  </span>
-                ) : '—'}
+              <p><strong>From:</strong>{' '}
+                {shown.from_obj ? renderAirportShort(shown.from_obj) : (shown.from ? <span className="route-singleline">{shown.from}</span> : '—')}
               </p>
 
-              <p>
-                <strong>To:</strong>{' '}
-                {shown.to ? (
-                  <span className="route-line">
-                    {(() => {
-                      const parts = String(shown.to).trim();
-                      const emojiMatch = parts.match(/([\u{1F1E6}-\u{1F1FF}]{2})$/u);
-                      const emoji = emojiMatch ? emojiMatch[0] : '';
-                      const core = emoji ? parts.replace(emoji, '').trim() : parts;
-                      return (
-                        <>
-                          {emoji && <span className="flag">{emoji} </span>}
-                          <span className="route-main">{core}</span>
-                        </>
-                      );
-                    })()}
-                  </span>
-                ) : '—'}
+              <p><strong>To:</strong>{' '}
+                {shown.to_obj ? renderAirportShort(shown.to_obj) : (shown.to ? <span className="route-singleline">{shown.to}</span> : '—')}
               </p>
 
               <p><strong>Ground speed:</strong> {shown.gs_mph ? `${shown.gs_mph} mph` : (shown.gs ? `${(shown.gs*1.15078).toFixed(0)} mph` : '—')}</p>
               <p><strong>Altitude:</strong> {shown.alt_baro ? `${Math.round(shown.alt_baro)} ft` : '—'}</p>
               <p><strong>Track / Heading:</strong> {shown.track ? `${Math.round(shown.track)}°` : '—'}</p>
-              {userPos && shown.lat && shown.lon && (
-                <p><strong>Distance:</strong> {haversine(userPos.lat, userPos.lon, shown.lat, shown.lon).toFixed(2)} km</p>
-              )}
+              {userPos && shown.lat && shown.lon && (<p><strong>Distance:</strong> {haversine(userPos.lat, userPos.lon, shown.lat, shown.lon).toFixed(2)} km</p>)}
             </>
           )}
 
@@ -144,7 +140,7 @@ export default function App() {
 
           <p>
             <strong style={{cursor:'pointer'}} onClick={() => setShowOthersList(s => !s)}>
-              Other planes nearby: {Array.isArray(others) ? others.length : 0}
+              Other planes nearby: {othersTotal}
             </strong>
           </p>
 
@@ -154,14 +150,19 @@ export default function App() {
               {others.map((o, i) => (
                 <div key={o.hex || `${o.lat}-${o.lon}-${i}`} style={{padding:'8px', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
                   <div style={{fontWeight:700}}>
-                    { (o.flight || o.callsign || '—') } { o.number ? `/ ${o.number}` : '' } - { o.airline || '—' }
+                    { (o.flight || o.callsign || '—') }{ o.number ? ` / ${o.number}` : '' } <span style={{marginLeft:10, color:'#cfe'}}>{o.airline || '—'}</span>
                   </div>
                   <div style={{color:'#cfe', marginTop:6}}>
-                    {/* Show exactly: FLAG CountryName  City  (Airport — IATA) */}
-                    { (o.from_short || o.from || '—') } <span style={{opacity:0.85}}> — </span> { (o.to_short || o.to || '—') }
+                    <div style={{fontSize:13, opacity:0.95}}>{ o.type ? `${o.type}` : '' }{ o.type ? ' • ' : '' }{ o.reg ? `${o.reg}` : '' }</div>
+                    <div style={{marginTop:6}}>
+                      { o.from_obj ? renderAirportShort(o.from_obj) : (o.from || '—') }
+                      <span style={{opacity:0.85}}> — </span>
+                      { o.to_obj ? renderAirportShort(o.to_obj) : (o.to || '—') }
+                    </div>
                   </div>
                 </div>
               ))}
+              {othersTotal > others.length && <div style={{padding:10,color:'#9aa',textAlign:'center'}}>… showing {others.length} of {othersTotal}</div>}
             </div>
           )}
 
