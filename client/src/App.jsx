@@ -19,7 +19,6 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 function renderAirportShort(obj) {
   if (!obj) return '—';
 
-  // obj expected shape: { city, location, iata, name, countryiso }
   const cc = (obj.countryiso || obj.country || '').toUpperCase();
   const emoji = (cc && cc.length === 2)
     ? String.fromCodePoint(...cc.split('').map(c => 127397 + c.charCodeAt(0)))
@@ -160,7 +159,8 @@ export default function App() {
                     {(shown.flight || shown.callsign || shown.reg || shown.hex) || '—'}
                   </h2>
                   <div style={{color:'#9aa', fontSize:13, display:'grid', gap:6}}>
-                    <div><strong>Type:</strong> {shown.type || 'unknown'}</div>
+                    {/* Minimal change: prefer aircraft_name (MANUFACTURER, Model (TYPE)) if available */}
+                    <div><strong>Type:</strong> {shown.aircraft_name || shown.type || 'unknown'}</div>
                     <div><strong>Registration:</strong> {shown.reg || '—'}</div>
                     <div><strong>Airline / Operator:</strong> {shown.airline || '—'}</div>
                   </div>
@@ -221,7 +221,8 @@ export default function App() {
 
                   <div style={{color:'#cfe', marginTop:6}}>
                     <div style={{fontSize:13, opacity:0.95}}>
-                      { o.type ? `${o.type}` : '' }{ o.type ? ' • ' : '' }{ o.reg ? `${o.reg}` : '' }
+                      {/* show mapped aircraft_name if available, otherwise show type */}
+                      { o.aircraft_name ? `${o.aircraft_name}` : (o.type ? `${o.type}` : '') }{ o.type ? (o.type && o.reg ? ' • ' : '') : '' }{ o.reg ? `${o.reg}` : '' }
                     </div>
                     <div style={{marginTop:6}}>
                       { o.from_obj ? renderAirportShort(o.from_obj) : (o.from || '—') }
