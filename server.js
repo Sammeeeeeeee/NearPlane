@@ -33,55 +33,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-/* 
-  ---- NEW: doc8643 proxy endpoint ----
-  Minimal proxy to fetch doc8643 aircraft images and return them to the client
-  so the browser avoids opaque/cors blocking. Only added this endpoint and a
-  single assignment to nearest.thumb (below) — nothing else changed.
-*/
-async function fetchWithSimpleLog(url, opts = {}) {
-  const t0 = Date.now();
-  console.log(`[OUT] ${new Date(t0).toISOString()} → ${opts.method || 'GET'} ${url}`);
-  try {
-    const res = await fetch(url, opts);
-    const took = Date.now() - t0;
-    console.log(`[OUT-RESP] status=${res.status} tookMs=${took} url=${url}`);
-    return res;
-  } catch (err) {
-    const took = Date.now() - t0;
-    console.log(`[OUT-ERR] ${err && err.message ? err.message : err} (${took}ms) ${url}`);
-    throw err;
-  }
-}
-
-app.get('/api/docimg/:code.jpg', async (req, res) => {
-  try {
-    const raw = String(req.params.code || '').toUpperCase().replace(/[^A-Z0-9_-]/g, '');
-    if (!raw) return res.status(400).send('bad code');
-    const remote = `https://doc8643.com/static/img/aircraft/large/${encodeURIComponent(raw)}.jpg`;
-    // use simple fetch + log (won't bypass your existing rate limiter here)
-    const r = await fetchWithSimpleLog(remote, { redirect: 'follow' });
-    if (!r.ok) {
-      const txt = await r.text().catch(()=>null);
-      res.status(r.status).type('text/plain').send(`Upstream ${r.status} ${txt ? ' - ' + String(txt).slice(0,200) : ''}`);
-      return;
-    }
-    const arrayBuffer = await r.arrayBuffer();
-    const buf = Buffer.from(arrayBuffer);
-    const ct = r.headers.get('content-type') || 'image/jpeg';
-    res.setHeader('Content-Type', ct);
-    res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=3600');
-    res.send(buf);
-  } catch (err) {
-    console.error('[docimg] proxy error', err && err.message ? err.message : err);
-    res.status(502).send('proxy error');
-  }
-});
-/* ---- end docimg proxy ---- */
-
-app.use(express.static(path.join(__dirname, 'client', 'dist')));
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'client', 'dist', 'index.html')));
-
+/* --- existing helper functions --- */
 function toNumber(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
 function sanitizeAircraft(a) {
   if (!a) return null;
@@ -89,7 +41,7 @@ function sanitizeAircraft(a) {
     hex: a.hex,
     flight: (a.flight || '').trim(),
     reg: a.r || null,
-    type: a.t || null,
+    type: a.t || a.type || null,
     lat: toNumber(a.lat),
     lon: toNumber(a.lon),
     gs: toNumber(a.gs),
@@ -103,8 +55,6 @@ function sanitizeAircraft(a) {
     emergency: a.emergency || 'none'
   };
 }
-
-// haversine (km)
 function haversineKm(lat1, lon1, lat2, lon2) {
   if (!lat1 || !lon1 || !lat2 || !lon2) return Number.POSITIVE_INFINITY;
   const R = 6371;
@@ -116,7 +66,7 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-/* Load airline map (optional) */
+/* --- load two-letter airlines map (unchanged) --- */
 let AIRLINE_MAP = {};
 (async () => {
   try {
@@ -129,7 +79,58 @@ let AIRLINE_MAP = {};
   }
 })();
 
-/* Token bucket limiter */
+/* --- load 3-letter CSV map (unchanged) --- */
+const THREE_LETTER_MAP = {};
+(async function loadThreeLetterMap() {
+  try {
+    const url = 'https://raw.githubusercontent.com/rikgale/ICAOList/refs/heads/main/Airlines.csv';
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      console.warn('failed to fetch 3-letter CSV', resp.status);
+      return;
+    }
+    const txt = await resp.text();
+
+    function parseCSV(text) {
+      const rows = [];
+      let cur = [];
+      let i = 0;
+      let field = '';
+      let inQuotes = false;
+      while (i < text.length) {
+        const ch = text[i];
+        if (inQuotes) {
+          if (ch === '"') {
+            if (text[i+1] === '"') { field += '"'; i += 2; continue; }
+            inQuotes = false; i++; continue;
+          } else { field += ch; i++; continue; }
+        } else {
+          if (ch === '"') { inQuotes = true; i++; continue; }
+          if (ch === ',') { cur.push(field); field = ''; i++; continue; }
+          if (ch === '\r') { i++; continue; }
+          if (ch === '\n') { cur.push(field); rows.push(cur); cur = []; field = ''; i++; continue; }
+          field += ch; i++;
+        }
+      }
+      if (field !== '' || cur.length) cur.push(field);
+      if (cur.length) rows.push(cur);
+      return rows;
+    }
+
+    const rows = parseCSV(txt);
+    for (let r of rows) {
+      if (!r || r.length < 4) continue;
+      const company = (r[0] || '').trim();
+      const code = (r[3] || '').trim().toUpperCase();
+      if (company && code) THREE_LETTER_MAP[code] = company;
+    }
+    console.log('3-letter airline map loaded entries=', Object.keys(THREE_LETTER_MAP).length);
+  } catch (e) {
+    console.warn('failed to load 3-letter map', e && e.message ? e.message : e);
+  }
+})();
+
+/* --- rate-limited fetch (token bucket) --- */
 class TokenBucket {
   constructor(limitPerMin) {
     this.capacity = Math.max(1, Math.floor(limitPerMin));
@@ -147,10 +148,7 @@ class TokenBucket {
   async take() {
     while (true) {
       this._refillIfNeeded();
-      if (this.tokens > 0) {
-        this.tokens -= 1;
-        return;
-      }
+      if (this.tokens > 0) { this.tokens -= 1; return; }
       await new Promise(r => setTimeout(r, 250));
     }
   }
@@ -172,7 +170,7 @@ async function rateLimitedFetch(url, opts = {}) {
   }
 }
 
-/* Caches */
+/* --- caches & utilities (unchanged) --- */
 const callsignCache = new Map();
 const routesetCache = new Map();
 function cacheGet(map, key) {
@@ -184,16 +182,13 @@ function cacheGet(map, key) {
 function cacheSet(map, key, value, ttl) {
   map.set(key, { value, expires: Date.now() + ttl });
 }
-
 function makeKey(lat, lon, radius) {
   const dec = 3;
   const rlat = (Math.round(lat * (10**dec)) / (10**dec)).toFixed(dec);
   const rlon = (Math.round(lon * (10**dec)) / (10**dec)).toFixed(dec);
   return `${rlat}_${rlon}_${radius}`;
 }
-
 const pollers = new Map();
-
 function parallelLimit(items, fn, concurrency = 3) {
   const results = new Array(items.length);
   let idx = 0;
@@ -208,6 +203,42 @@ function parallelLimit(items, fn, concurrency = 3) {
   return Promise.all(workers).then(()=>results);
 }
 
+/* --- DOC8643 image proxy route --- */
+/*
+  Purpose: avoid CORS/opaque responses by proxying doc8643 images via the server.
+  Caching: 24 hours (public). Logs use rateLimitedFetch so it consumes token budget.
+*/
+app.get('/api/docimg/:code.jpg', async (req, res) => {
+  try {
+    const codeRaw = req.params.code || '';
+    const code = String(codeRaw).replace(/[^A-Za-z0-9_-]/g, '').toUpperCase();
+    if (!code) return res.status(400).send('bad code');
+
+    // remote doc8643 URL
+    const remote = `https://doc8643.com/static/img/aircraft/large/${encodeURIComponent(code)}.jpg`;
+
+    // fetch via rate limited fetch (so logs & limits apply)
+    const r = await rateLimitedFetch(remote, { redirect: 'follow' });
+
+    if (!r.ok) {
+      const txt = await (r.text().catch(()=>'')); // try to peek text
+      res.status(r.status).type('text/plain').send(`Upstream returned ${r.status}: ${txt.slice ? txt.slice(0,200) : ''}`);
+      return;
+    }
+
+    // stream bytes back
+    const arrayBuffer = await r.arrayBuffer();
+    const buf = Buffer.from(arrayBuffer);
+    res.setHeader('Content-Type', r.headers.get('content-type') || 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=3600'); // 24h
+    res.send(buf);
+  } catch (err) {
+    console.error('[docimg proxy] error', err && err.message ? err.message : err);
+    res.status(502).send('proxy error');
+  }
+});
+
+/* --- poller implementation (almost unchanged) --- */
 function ensurePoller(key, lat, lon, radius) {
   if (pollers.has(key)) return pollers.get(key);
 
@@ -278,16 +309,14 @@ function ensurePoller(key, lat, lon, radius) {
         }
       }
 
-      // ---- NEW: set nearest.thumb to doc8643 proxy if type present ----
+      // --- NEW: attach normalized thumb URL for nearest if we have a type ---
       if (nearest && nearest.type) {
-        try {
-          const clean = String(nearest.type).toUpperCase().replace(/[^A-Z0-9_-]/g,'');
-          if (clean) nearest.thumb = `/api/docimg/${clean}.jpg`;
-        } catch (e) { /* ignore */ }
-      } else {
-        nearest.thumb = null;
+        const code = String(nearest.type).trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+        if (code) {
+          // use our proxy endpoint so the browser always gets a proxied image (no CORS issues)
+          nearest.thumb = `/api/docimg/${code}.jpg`;
+        }
       }
-      // ---- end image change ----
 
       // OTHERS: refresh at most every OTHER_POLL_MS
       const now = Date.now();
@@ -303,19 +332,16 @@ function ensurePoller(key, lat, lon, radius) {
             }
             state.othersTotal = Array.isArray(pjson.ac) ? pjson.ac.length : arr.length;
 
-            // sort by api-provided dst or computed haversine if dst missing
             arr.sort((A, B) => {
               const da = (A && A.dst !== undefined && A.dst !== null) ? Number(A.dst) : haversineKm(lat, lon, A.lat, A.lon);
               const db = (B && B.dst !== undefined && B.dst !== null) ? Number(B.dst) : haversineKm(lat, lon, B.lat, B.lon);
               return da - db;
             });
 
-            // exclude nearest by hex and limit
             const filtered = arr.filter(a => !(nearest && a.hex && nearest.hex && a.hex === nearest.hex)).slice(0, OTHERS_LIMIT);
             state.cachedOthers = filtered;
             state.lastOthersFetch = Date.now();
 
-            // enrich limited others
             await enrichOthersCallsAndRoutes(state.cachedOthers, lat, lon);
           } else {
             console.warn('[point] non-ok', pr.status);
@@ -323,7 +349,7 @@ function ensurePoller(key, lat, lon, radius) {
         } catch (e) {
           console.warn('[point] fetch failed', e && e.message ? e.message : e);
         }
-      } // end others refresh
+      }
 
       broadcast({ nearest, others: state.cachedOthers.slice(0, OTHERS_LIMIT), othersTotal: state.othersTotal, now: json.now || Date.now() });
 
@@ -331,7 +357,7 @@ function ensurePoller(key, lat, lon, radius) {
       console.error('[poller] cycle error', err && err.message ? err.message : err);
       broadcast({ nearest: null, others: state.cachedOthers, othersTotal: state.othersTotal, now: Date.now() });
     }
-  } // end fetchCycle
+  }
 
   function broadcast(payload) {
     for (const s of state.subs) {
@@ -348,7 +374,11 @@ function ensurePoller(key, lat, lon, radius) {
   }
   function mergeNearestWithRouteset(nearest, route) {
     if (!nearest || !route) return;
-    if (route.airline_code) nearest.airline = AIRLINE_MAP[route.airline_code] || route.airline_code || nearest.airline;
+    if (route.airline_code) {
+      const code = String(route.airline_code).trim().toUpperCase();
+      const full = THREE_LETTER_MAP[code] || AIRLINE_MAP[code] || code;
+      nearest.airline = `${full} (${code})`;
+    }
     if (route._airports && route._airports.length) {
       const a0 = route._airports[0];
       const a1 = route._airports[1] || null;
@@ -412,7 +442,11 @@ function ensurePoller(key, lat, lon, radius) {
               const callsign = route.callsign;
               const target = othersArr.find(x => x.flight && x.flight.trim() === (callsign || '').trim());
               if (!target) return;
-              if (route.airline_code) target.airline = AIRLINE_MAP[route.airline_code] || route.airline_code || target.airline;
+              if (route.airline_code) {
+                const code = String(route.airline_code).trim().toUpperCase();
+                const full = THREE_LETTER_MAP[code] || AIRLINE_MAP[code] || code;
+                target.airline = `${full} (${code})`;
+              }
               if (route._airports && route._airports.length) {
                 const a0 = route._airports[0]; const a1 = route._airports[1] || null;
                 if (a0) target.from_obj = { city: a0.location, name: a0.name, iata: a0.iata || a0.icao || '', countryiso: a0.countryiso2 || '' };
@@ -513,6 +547,10 @@ app.get('/__debug/pollers', (req, res) => {
   }
   res.json({ pollers: info, tokens: { capacity: bucket.capacity, tokens: bucket.tokens } });
 });
+
+/* Serve static and SPA fallback (after API routes above) */
+app.use(express.static(path.join(__dirname, 'client', 'dist')));
+app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'client', 'dist', 'index.html')));
 
 server.listen(PORT, () => {
   console.log(`Server listening on ${PORT}. POLL_MS=${POLL_MS} OTHER_POLL_MS=${OTHER_POLL_MS} OTHERS_LIMIT=${OTHERS_LIMIT} MAX_REQS_PER_MIN=${MAX_REQUESTS_PER_MIN}`);
