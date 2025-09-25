@@ -55,15 +55,15 @@ jobs:
           file: dockerfile
           push: true
           tags: |
-            ${{ secrets.DOCKER_USERNAME }}/plane-tracker:latest
-            ${{ secrets.DOCKER_USERNAME }}/plane-tracker:${{ steps.docker_tag.outputs.TAG }}
+            ${{ secrets.DOCKER_USERNAME }}/near-plane:latest
+            ${{ secrets.DOCKER_USERNAME }}/near-plane:${{ steps.docker_tag.outputs.TAG }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ secrets.DOCKER_USERNAME }}/plane-tracker:${{ steps.docker_tag.outputs.TAG }}
+          image-ref: ${{ secrets.DOCKER_USERNAME }}/near-plane:${{ steps.docker_tag.outputs.TAG }}
           format: 'sarif'
           output: 'trivy-results.sarif'
         continue-on-error: true
@@ -98,7 +98,7 @@ jobs:
         uses: docker/scout-action@v1
         with:
           command: cves
-          image: ${{ secrets.DOCKER_USERNAME }}/plane-tracker:${{ steps.docker_tag.outputs.TAG }}
+          image: ${{ secrets.DOCKER_USERNAME }}/near-plane:${{ steps.docker_tag.outputs.TAG }}
           only-severities: critical,high
           exit-code: false
 
@@ -107,7 +107,7 @@ jobs:
         run: |
           echo "## Security Scan Results" >> $GITHUB_STEP_SUMMARY
           echo "### Build Information" >> $GITHUB_STEP_SUMMARY
-          echo "- Image: ${{ secrets.DOCKER_USERNAME }}/plane-tracker:${{ steps.docker_tag.outputs.TAG }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Image: ${{ secrets.DOCKER_USERNAME }}/near-plane:${{ steps.docker_tag.outputs.TAG }}" >> $GITHUB_STEP_SUMMARY
           echo "- Scan completed at: $(date)" >> $GITHUB_STEP_SUMMARY
           echo "- Build status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
           
