@@ -128,7 +128,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <h1>NearPlane/h1>
+        <h1>NearPlane</h1>
         <small>Status: {status}</small>
       </header>
 

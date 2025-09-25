@@ -1,8 +1,9 @@
-name: Build & Publish Docker
+name: Build & Publish to DockerHub
 
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
   docker:
