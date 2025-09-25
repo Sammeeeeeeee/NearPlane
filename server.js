@@ -33,6 +33,52 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+/* 
+  ---- NEW: doc8643 proxy endpoint ----
+  Minimal proxy to fetch doc8643 aircraft images and return them to the client
+  so the browser avoids opaque/cors blocking. Only added this endpoint and a
+  single assignment to nearest.thumb (below) — nothing else changed.
+*/
+async function fetchWithSimpleLog(url, opts = {}) {
+  const t0 = Date.now();
+  console.log(`[OUT] ${new Date(t0).toISOString()} → ${opts.method || 'GET'} ${url}`);
+  try {
+    const res = await fetch(url, opts);
+    const took = Date.now() - t0;
+    console.log(`[OUT-RESP] status=${res.status} tookMs=${took} url=${url}`);
+    return res;
+  } catch (err) {
+    const took = Date.now() - t0;
+    console.log(`[OUT-ERR] ${err && err.message ? err.message : err} (${took}ms) ${url}`);
+    throw err;
+  }
+}
+
+app.get('/api/docimg/:code.jpg', async (req, res) => {
+  try {
+    const raw = String(req.params.code || '').toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+    if (!raw) return res.status(400).send('bad code');
+    const remote = `https://doc8643.com/static/img/aircraft/large/${encodeURIComponent(raw)}.jpg`;
+    // use simple fetch + log (won't bypass your existing rate limiter here)
+    const r = await fetchWithSimpleLog(remote, { redirect: 'follow' });
+    if (!r.ok) {
+      const txt = await r.text().catch(()=>null);
+      res.status(r.status).type('text/plain').send(`Upstream ${r.status} ${txt ? ' - ' + String(txt).slice(0,200) : ''}`);
+      return;
+    }
+    const arrayBuffer = await r.arrayBuffer();
+    const buf = Buffer.from(arrayBuffer);
+    const ct = r.headers.get('content-type') || 'image/jpeg';
+    res.setHeader('Content-Type', ct);
+    res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=3600');
+    res.send(buf);
+  } catch (err) {
+    console.error('[docimg] proxy error', err && err.message ? err.message : err);
+    res.status(502).send('proxy error');
+  }
+});
+/* ---- end docimg proxy ---- */
+
 app.use(express.static(path.join(__dirname, 'client', 'dist')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'client', 'dist', 'index.html')));
 
@@ -231,6 +277,17 @@ function ensurePoller(key, lat, lon, radius) {
           } catch (e) {}
         }
       }
+
+      // ---- NEW: set nearest.thumb to doc8643 proxy if type present ----
+      if (nearest && nearest.type) {
+        try {
+          const clean = String(nearest.type).toUpperCase().replace(/[^A-Z0-9_-]/g,'');
+          if (clean) nearest.thumb = `/api/docimg/${clean}.jpg`;
+        } catch (e) { /* ignore */ }
+      } else {
+        nearest.thumb = null;
+      }
+      // ---- end image change ----
 
       // OTHERS: refresh at most every OTHER_POLL_MS
       const now = Date.now();
