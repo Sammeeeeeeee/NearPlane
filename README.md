@@ -1,4 +1,4 @@
-# Nearest Plane — Realtime (single-container)
+# Near-Plane
 
 Minimal single-container app that shows the **nearest aircraft** to the user's location in realtime. Server polls `adsb.lol` and proxies data to clients over Socket.IO. Client is React + Vite + Leaflet.
 
@@ -11,13 +11,6 @@ Minimal single-container app that shows the **nearest aircraft** to the user's l
 - Per-location poller: single server poller per distinct lat/lon/radius key (prevents duplication)
 - Request token bucket to avoid spamming third-party APIs
 
-## Files
-- `server.js` — Express + Socket.IO backend
-- `client/` — React app (Vite)
-  - `src/App.jsx` — UI + socket logic
-  - `src/MapPlane.jsx` — Leaflet map and markers
-  - `src/style.css` — styling (paste provided CSS)
-- `Dockerfile` — multi-stage build for single container
 
 ## Build & Run (Docker)
 ```bash
@@ -27,7 +20,6 @@ docker run -p 3000:3000 --name nearest-plane \
   -e POLL_MS=5000 \
   -e OTHER_POLL_MS=20000 \
   -e OTHERS_LIMIT=10 \
-  -e MAX_REQUESTS_PER_MIN=60 \
   nearest-plane:latest
   ```
 
