@@ -66,7 +66,7 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-/* --- load two-letter airlines map (unchanged) --- */
+/* --- load airline map (unchanged) --- */
 let AIRLINE_MAP = {};
 (async () => {
   try {
@@ -127,6 +127,63 @@ const THREE_LETTER_MAP = {};
     console.log('3-letter airline map loaded entries=', Object.keys(THREE_LETTER_MAP).length);
   } catch (e) {
     console.warn('failed to load 3-letter map', e && e.message ? e.message : e);
+  }
+})();
+
+/* --- NEW: load aircraft designator CSV (ICAOList.csv) into AIRCRAFT_TYPE_MAP --- */
+const AIRCRAFT_TYPE_MAP = {};
+(async function loadAircraftTypeMap() {
+  try {
+    const url = 'https://raw.githubusercontent.com/rikgale/ICAOList/refs/heads/main/ICAOList.csv';
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      console.warn('failed to fetch ICAOList.csv', resp.status);
+      return;
+    }
+    const txt = await resp.text();
+
+    // CSV parse (same style as above)
+    function parseCSV(text) {
+      const rows = [];
+      let cur = [];
+      let i = 0;
+      let field = '';
+      let inQuotes = false;
+      while (i < text.length) {
+        const ch = text[i];
+        if (inQuotes) {
+          if (ch === '"') {
+            if (text[i+1] === '"') { field += '"'; i += 2; continue; }
+            inQuotes = false; i++; continue;
+          } else { field += ch; i++; continue; }
+        } else {
+          if (ch === '"') { inQuotes = true; i++; continue; }
+          if (ch === ',') { cur.push(field); field = ''; i++; continue; }
+          if (ch === '\r') { i++; continue; }
+          if (ch === '\n') { cur.push(field); rows.push(cur); cur = []; field = ''; i++; continue; }
+          field += ch; i++;
+        }
+      }
+      if (field !== '' || cur.length) cur.push(field);
+      if (cur.length) rows.push(cur);
+      return rows;
+    }
+
+    const rows = parseCSV(txt);
+    for (let r of rows) {
+      // expected columns: [TypeDesignator, Class, Number+Engine Type, "MANUFACTURER, Model"]
+      if (!r || r.length < 4) continue;
+      const designator = (r[0] || '').trim().toUpperCase();
+      const manufacturerModel = (r[3] || '').trim();
+      if (designator && manufacturerModel) {
+        // normalize designator (remove spaces/illegal chars)
+        const key = designator.replace(/[^A-Z0-9_-]/g, '');
+        AIRCRAFT_TYPE_MAP[key] = manufacturerModel;
+      }
+    }
+    console.log('aircraft type map loaded entries=', Object.keys(AIRCRAFT_TYPE_MAP).length);
+  } catch (e) {
+    console.warn('failed to load aircraft type map', e && e.message ? e.message : e);
   }
 })();
 
@@ -203,30 +260,23 @@ function parallelLimit(items, fn, concurrency = 3) {
   return Promise.all(workers).then(()=>results);
 }
 
-/* --- DOC8643 image proxy route --- */
-/*
-  Purpose: avoid CORS/opaque responses by proxying doc8643 images via the server.
-  Caching: 24 hours (public). Logs use rateLimitedFetch so it consumes token budget.
-*/
+/* --- DOC8643 image proxy route (unchanged) --- */
 app.get('/api/docimg/:code.jpg', async (req, res) => {
   try {
     const codeRaw = req.params.code || '';
     const code = String(codeRaw).replace(/[^A-Za-z0-9_-]/g, '').toUpperCase();
     if (!code) return res.status(400).send('bad code');
 
-    // remote doc8643 URL
     const remote = `https://doc8643.com/static/img/aircraft/large/${encodeURIComponent(code)}.jpg`;
 
-    // fetch via rate limited fetch (so logs & limits apply)
     const r = await rateLimitedFetch(remote, { redirect: 'follow' });
 
     if (!r.ok) {
-      const txt = await (r.text().catch(()=>'')); // try to peek text
+      const txt = await (r.text().catch(()=>''));
       res.status(r.status).type('text/plain').send(`Upstream returned ${r.status}: ${txt.slice ? txt.slice(0,200) : ''}`);
       return;
     }
 
-    // stream bytes back
     const arrayBuffer = await r.arrayBuffer();
     const buf = Buffer.from(arrayBuffer);
     res.setHeader('Content-Type', r.headers.get('content-type') || 'image/jpeg');
@@ -238,7 +288,7 @@ app.get('/api/docimg/:code.jpg', async (req, res) => {
   }
 });
 
-/* --- poller implementation (almost unchanged) --- */
+/* --- poller implementation (unchanged except for aircraft_name assignments) --- */
 function ensurePoller(key, lat, lon, radius) {
   if (pollers.has(key)) return pollers.get(key);
 
@@ -249,6 +299,15 @@ function ensurePoller(key, lat, lon, radius) {
     othersTotal: 0,
     timer: null
   };
+
+  function getAircraftFullName(type) {
+    if (!type) return null;
+    const code = String(type).trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+    if (!code) return null;
+    const found = AIRCRAFT_TYPE_MAP[code];
+    if (found) return `${found} (${code})`;
+    return null;
+  }
 
   async function fetchCycle() {
     try {
@@ -262,6 +321,12 @@ function ensurePoller(key, lat, lon, radius) {
       const json = await r.json();
       const nearestRaw = (json.ac && json.ac.length) ? json.ac[0] : null;
       const nearest = sanitizeAircraft(nearestRaw);
+
+      // Attach aircraft_name for nearest if mapping exists (do this early so UI gets it)
+      if (nearest && nearest.type) {
+        const full = getAircraftFullName(nearest.type);
+        if (full) nearest.aircraft_name = full;
+      }
 
       // enrich nearest callsign (cache)
       if (nearest && nearest.flight) {
@@ -309,13 +374,10 @@ function ensurePoller(key, lat, lon, radius) {
         }
       }
 
-      // --- NEW: attach normalized thumb URL for nearest if we have a type ---
+      // NEW: ensure thumb for nearest (keeps existing behavior)
       if (nearest && nearest.type) {
         const code = String(nearest.type).trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
-        if (code) {
-          // use our proxy endpoint so the browser always gets a proxied image (no CORS issues)
-          nearest.thumb = `/api/docimg/${code}.jpg`;
-        }
+        if (code) nearest.thumb = `/api/docimg/${code}.jpg`;
       }
 
       // OTHERS: refresh at most every OTHER_POLL_MS
@@ -336,6 +398,14 @@ function ensurePoller(key, lat, lon, radius) {
               const da = (A && A.dst !== undefined && A.dst !== null) ? Number(A.dst) : haversineKm(lat, lon, A.lat, A.lon);
               const db = (B && B.dst !== undefined && B.dst !== null) ? Number(B.dst) : haversineKm(lat, lon, B.lat, B.lon);
               return da - db;
+            });
+
+            // attach aircraft_name for each other (if mapped)
+            arr.forEach(a => {
+              if (a && a.type) {
+                const full = getAircraftFullName(a.type);
+                if (full) a.aircraft_name = full;
+              }
             });
 
             const filtered = arr.filter(a => !(nearest && a.hex && nearest.hex && a.hex === nearest.hex)).slice(0, OTHERS_LIMIT);
