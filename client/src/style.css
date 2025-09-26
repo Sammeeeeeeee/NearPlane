@@ -39,17 +39,10 @@ html,body,#root{
 }
 @keyframes flash{ 0%{opacity:1} 50%{opacity:0.15} 100%{opacity:1} }
 
-/* --- ROUTE / FROM-TO styling --- */
-/* .route-wrapping: allow long text to wrap to next line (default) */
 .route-wrapping {
-  display: flex;
-  flex-wrap: wrap;        /* allow wrapping to next line */
-  align-items: flex-start;/* align flag to first line top */
-  gap: 0.4rem;
-  white-space: normal;
-  word-break: break-word;
-  line-height: 1.15;
+  display: inline;            /* important: let it flow inline with surrounding text */
   max-width: 100%;
+  white-space: normal;        /* allow wrapping */
 }
 
 /* If you later want forced single-line use .route-singleline */
@@ -64,32 +57,34 @@ html,body,#root{
 }
 
 .flag {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 20px;
-  font-size: 18px;
+  display: inline-block;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+  width: auto;
+  height: 1em;
   line-height: 1;
-  margin-right: 6px;
-  /* placing at top of wrapped block: */
-  align-self: flex-start;
-  transform: translateY(0px);
+  font-size: 18px;
 }
 
-/* main city text — bold */
 .route-main {
   font-weight: 600;
   color: #e6eef8;
-  display: inline-block;
+  display: inline;
+  word-break: break-word;
 }
 
-/* bracket / airport info — smaller and faded; allow to sit on same or next line */
+.route-text {
+  display: inline;            /* keep as inline so it wraps naturally */
+  vertical-align: middle;
+  word-break: break-word;     /* break long words if needed */
+}
+
 .bracket {
   font-size: 0.88em;
   color: rgba(230,238,248,0.68);
   margin-left: 6px;
-  display: inline-block;
+  display: inline;
+  word-break: break-word;
 }
 
 /* Ensure left column can shrink nicely */

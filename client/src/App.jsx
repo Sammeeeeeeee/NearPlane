@@ -1,8 +1,6 @@
-// client/src/App.jsx
 import React, { useEffect, useState, useRef } from 'react';
 import io from 'socket.io-client';
 import MapPlane from './MapPlane';
-import './style.css'; // ensure styles are imported (already in your main.jsx, safe to have here too)
 
 /* Utility: haversine distance in km */
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -48,7 +46,6 @@ function StatusDot({ status }) {
   const btnRef = useRef(null);
 
   useEffect(() => {
-    // close tooltip when clicking outside
     function onDocClick(e) {
       if (!btnRef.current) return;
       if (!btnRef.current.contains(e.target)) setOpen(false);
@@ -74,7 +71,7 @@ function StatusDot({ status }) {
         onClick={handleClick}
         aria-label={`Connection status: ${status}`}
         aria-pressed={open}
-        title={`Status: ${status}`} /* keeps native tooltip for accessibility/hover */
+        title={`Status: ${status}`}
       />
       {open && (
         <div className="status-tooltip" role="status" aria-live="polite">
@@ -177,8 +174,6 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <h1>NearPlane</h1>
-
-        {/* status dot (replaces the inline 'Status: ...' text) */}
         <div style={{display:'flex', alignItems:'center', gap:8}}>
           <StatusDot status={status} />
         </div>
