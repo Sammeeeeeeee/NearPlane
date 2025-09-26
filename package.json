@@ -8,8 +8,8 @@
     "build": "cd client && npm install && npm run build"
   },
   "dependencies": {
-    "express": "latest",
-    "socket.io": "latest"
+    "express": "^4.18.2",
+    "socket.io": "^4.8.0"
   },
   "engines": {
     "node": ">=18"

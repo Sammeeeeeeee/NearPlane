@@ -1,5 +1,5 @@
 # Build client
-FROM node:latest AS build
+FROM node:18-alpine AS build
 WORKDIR /app
 COPY client/package.json client/package-lock.json* ./client/
 COPY client ./client
@@ -8,7 +8,7 @@ RUN npm install
 RUN npm run build
 
 # Runtime image
-FROM node:latest
+FROM node:18-alpine
 WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY server.js ./
