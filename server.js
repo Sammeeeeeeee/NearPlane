@@ -11,8 +11,8 @@ const { Server } = require('socket.io');
   Env config
 */
 const PORT = process.env.PORT || 3000;
-const DEFAULT_LAT = parseFloat(process.env.DEFAULT_LAT || '51.623842');
-const DEFAULT_LON = parseFloat(process.env.DEFAULT_LON || '-0.269584');
+const DEFAULT_LAT = parseFloat(process.env.DEFAULT_LAT || '51.456121');
+const DEFAULT_LON = parseFloat(process.env.DEFAULT_LON || '-0.384506');
 const DEFAULT_RADIUS = process.env.DEFAULT_RADIUS || '250';
 
 const POLL_MS = parseInt(process.env.POLL_MS || '5000', 10);        // nearest
