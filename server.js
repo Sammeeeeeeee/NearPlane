@@ -272,7 +272,7 @@ app.get('/api/docimg/:code.jpg', async (req, res) => {
     const r = await rateLimitedFetch(remote, { redirect: 'follow' });
 
     if (!r.ok) {
-      const txt = await (r.text().catch(()=>''));
+      const txt = await (r.text().catch(()=>'')); 
       res.status(r.status).type('text/plain').send(`Upstream returned ${r.status}: ${txt.slice ? txt.slice(0,200) : ''}`);
       return;
     }
@@ -288,14 +288,15 @@ app.get('/api/docimg/:code.jpg', async (req, res) => {
   }
 });
 
-/* --- poller implementation (unchanged except for aircraft_name assignments) --- */
+/* --- poller implementation (modified to send ALL 'others' raw but only enrich the top OTHERS_LIMIT) --- */
 function ensurePoller(key, lat, lon, radius) {
   if (pollers.has(key)) return pollers.get(key);
 
   const state = {
     subs: new Set(),
     lastOthersFetch: 0,
-    cachedOthers: [],
+    cachedOthers: [], // enriched subset (up to OTHERS_LIMIT)
+    rawOthers: [],    // full list from /v2/point (no enrichment)
     othersTotal: 0,
     timer: null
   };
@@ -315,7 +316,8 @@ function ensurePoller(key, lat, lon, radius) {
       const r = await rateLimitedFetch(closestUrl, { headers: { accept: 'application/json' } });
       if (!r.ok) {
         try { const txt = await r.text(); console.warn('[closest] non-ok', r.status, txt && txt.slice ? txt.slice(0,200) : ''); } catch(e){}
-        broadcast({ nearest: null, others: state.cachedOthers, othersTotal: state.othersTotal, now: Date.now() });
+        // broadcast nearest=null and the last-known raw list (so client can still render markers)
+        broadcast({ nearest: null, others: state.rawOthers || state.cachedOthers, othersTotal: state.othersTotal, now: Date.now() });
         return;
       }
       const json = await r.json();
@@ -408,10 +410,19 @@ function ensurePoller(key, lat, lon, radius) {
               }
             });
 
-            const filtered = arr.filter(a => !(nearest && a.hex && nearest.hex && a.hex === nearest.hex)).slice(0, OTHERS_LIMIT);
-            state.cachedOthers = filtered;
+            // FILTER OUT nearest from the others list (by hex)
+            const filteredAll = arr.filter(a => !(nearest && a.hex && nearest.hex && a.hex === nearest.hex));
+
+            // Save the raw full list so clients can render all markers without extra API calls
+            state.rawOthers = filteredAll;
+
+            // But only enrich the first OTHERS_LIMIT entries (to avoid a flood of outbound requests)
+            const toEnrich = filteredAll.slice(0, Math.max(0, OTHERS_LIMIT));
+            state.cachedOthers = toEnrich;
+
             state.lastOthersFetch = Date.now();
 
+            // Enrich only the limited subset
             await enrichOthersCallsAndRoutes(state.cachedOthers, lat, lon);
           } else {
             console.warn('[point] non-ok', pr.status);
@@ -421,11 +432,14 @@ function ensurePoller(key, lat, lon, radius) {
         }
       }
 
-      broadcast({ nearest, others: state.cachedOthers.slice(0, OTHERS_LIMIT), othersTotal: state.othersTotal, now: json.now || Date.now() });
+      // Broadcast: send nearest and the FULL raw others list (clients will render all),
+      // while cachedOthers still holds the enriched subset (for any richer UI elements).
+      broadcast({ nearest, others: state.rawOthers || state.cachedOthers, othersTotal: state.othersTotal, now: json.now || Date.now() });
 
     } catch (err) {
       console.error('[poller] cycle error', err && err.message ? err.message : err);
-      broadcast({ nearest: null, others: state.cachedOthers, othersTotal: state.othersTotal, now: Date.now() });
+      // on error, send whatever we have (prefer rawOthers so client can paint points)
+      broadcast({ nearest: null, others: state.rawOthers || state.cachedOthers, othersTotal: state.othersTotal, now: Date.now() });
     }
   }
 
@@ -575,7 +589,8 @@ io.on('connection', socket => {
 
     const payload = {
       nearest: null,
-      others: poller.cachedOthers || [],
+      // prefer the raw full list so clients can render all aircraft immediately
+      others: poller.rawOthers || poller.cachedOthers || [],
       othersTotal: poller.othersTotal || 0,
       now: Date.now()
     };
@@ -613,7 +628,7 @@ io.on('connection', socket => {
 app.get('/__debug/pollers', (req, res) => {
   const info = {};
   for (const [k, st] of pollers.entries()) {
-    info[k] = { subs: st.subs.size, lastOthersFetch: st.lastOthersFetch, cachedOthers: st.cachedOthers.length, othersTotal: st.othersTotal };
+    info[k] = { subs: st.subs.size, lastOthersFetch: st.lastOthersFetch, cachedOthers: st.cachedOthers.length, rawOthers: st.rawOthers.length, othersTotal: st.othersTotal };
   }
   res.json({ pollers: info, tokens: { capacity: bucket.capacity, tokens: bucket.tokens } });
 });
