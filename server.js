@@ -11,8 +11,8 @@ const { Server } = require('socket.io');
   Env config
 */
 const PORT = process.env.PORT || 3000;
-const DEFAULT_LAT = parseFloat(process.env.DEFAULT_LAT || '51.623842');
-const DEFAULT_LON = parseFloat(process.env.DEFAULT_LON || '-0.269584');
+const DEFAULT_LAT = parseFloat(process.env.DEFAULT_LAT || '51.456121');
+const DEFAULT_LON = parseFloat(process.env.DEFAULT_LON || '-0.384506');
 const DEFAULT_RADIUS = process.env.DEFAULT_RADIUS || '250';
 
 const POLL_MS = parseInt(process.env.POLL_MS || '5000', 10);        // nearest
@@ -260,7 +260,6 @@ function parallelLimit(items, fn, concurrency = 3) {
   return Promise.all(workers).then(()=>results);
 }
 
-/* --- DOC8643 image proxy route (unchanged) --- */
 app.get('/api/docimg/:code.jpg', async (req, res) => {
   try {
     const codeRaw = req.params.code || '';
@@ -376,7 +375,6 @@ function ensurePoller(key, lat, lon, radius) {
         }
       }
 
-      // NEW: ensure thumb for nearest (keeps existing behavior)
       if (nearest && nearest.type) {
         const code = String(nearest.type).trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
         if (code) nearest.thumb = `/api/docimg/${code}.jpg`;

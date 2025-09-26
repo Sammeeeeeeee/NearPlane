@@ -1,6 +1,6 @@
 {
-  "name": "nearest-plane-client",
-  "version": "1.0.0",
+  "name": "neareplane-client",
+  "version": "1.4.1",
   "private": true,
   "scripts": {
     "dev": "vite",
