@@ -16,10 +16,6 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-/* Render airport block:
-   - flag + city kept together (no break)
-   - bracketed airport info wraps naturally, with smaller gap to city
-*/
 function renderAirportShort(obj) {
   if (!obj) return '—';
 

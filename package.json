@@ -1,15 +1,15 @@
 {
-  "name": "nearest-plane-realtime",
-  "version": "1.0.0",
+  "name": "nearplane",
+  "version": "1.4.1",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "build": "cd client && npm ci && npm run build"
+    "build": "cd client && npm install && npm run build"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "socket.io": "^4.8.0"
+    "express": "latest",
+    "socket.io": "latest"
   },
   "engines": {
     "node": ">=18"

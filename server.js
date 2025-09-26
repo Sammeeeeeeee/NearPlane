@@ -260,7 +260,6 @@ function parallelLimit(items, fn, concurrency = 3) {
   return Promise.all(workers).then(()=>results);
 }
 
-/* --- DOC8643 image proxy route (unchanged) --- */
 app.get('/api/docimg/:code.jpg', async (req, res) => {
   try {
     const codeRaw = req.params.code || '';
@@ -376,7 +375,6 @@ function ensurePoller(key, lat, lon, radius) {
         }
       }
 
-      // NEW: ensure thumb for nearest (keeps existing behavior)
       if (nearest && nearest.type) {
         const code = String(nearest.type).trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
         if (code) nearest.thumb = `/api/docimg/${code}.jpg`;
