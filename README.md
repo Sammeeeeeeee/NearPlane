@@ -1,10 +1,24 @@
-# NearPlane ✈️
+<div align="center">
+<img width="256" height="256" alt="airplane-svgrepo-com" src="https://github.com/user-attachments/assets/78b6ef52-e91b-4c11-a2f1-27eae6097466" />
+</div>
 
+# NearPlane 
 Minimal single-container app that shows the **nearest aircraft** to the user's location in realtime. Server polls `adsb.lol` and proxies data to clients over Socket.IO. Client is React + Vite + Leaflet.
 
 
-<div align="center">
+## Features
+- Nearest aircraft details (callsign, registration, type, alt, speed in mph, heading, From / To airports and airline/operator)
+- Aircraft thumbnail 
+- Map showing user location and other nearby aircraft (smaller markers)
+- Poll intervals and limits configurable via environment variables
+- Per-location poller: single server poller per distinct lat/lon/radius key (prevents duplication)
+- Request token bucket to avoid spamming third-party APIs
+- Light/Dark mode
+- Expandeble section with the other nearest aircraft
+- Colour change on aircraft in emergancy
 
+## Screenshots
+<div align="center">
 <table>
   <tr>
     <td><img src="https://github.com/user-attachments/assets/cfc3c1fe-abfd-4645-b02c-47188bbd58fa" alt="image" height="400"></td>
@@ -19,16 +33,7 @@ Minimal single-container app that shows the **nearest aircraft** to the user's l
 </div>
 
 
-## Features
-- Nearest aircraft details (callsign, registration, type, alt, speed in mph, heading, From / To airports and airline/operator)
-- Aircraft thumbnail 
-- Map showing user location and other nearby aircraft (smaller markers)
-- Poll intervals and limits configurable via environment variables
-- Per-location poller: single server poller per distinct lat/lon/radius key (prevents duplication)
-- Request token bucket to avoid spamming third-party APIs
-- Light/Dark mode
-- Expandeble section with the other nearest aircraft
-- Colour change on aircraft in emergancy
+
 
 ## Environment Variables
 
@@ -68,13 +73,13 @@ docker run -p 80:80 --name nearest-plane  nearest-plane:latest
 ## Architecture & key files
 
 - `server.js` - main Node/Express server:
-	- Creates pollers keyed by (lat,lon,radius).
-	- Uses rateLimitedFetch (token bucket) for outbound requests.
-	- Caches callsign results and routeset POST responses (TTL configurable).
-	- Loads external CSVs (airline map, ICAOList) at startup for enrichment.
-	- Exposes `/api/docimg/:code.jpg` that proxies to `doc8643.com` for thumbnails.
-	- Serves the client SPA from `client/dist/`.
-	- Socket.IO: on subscribe server adds socket to poller; poller broadcast emits update payloads.
+  - Creates pollers keyed by (lat,lon,radius).
+  - Uses rateLimitedFetch (token bucket) for outbound requests.
+  - Caches callsign results and routeset POST responses (TTL configurable).
+  - Loads external CSVs (airline map, ICAOList) at startup for enrichment.
+  - Exposes `/api/docimg/:code.jpg` that proxies to `doc8643.com` for thumbnails.
+  - Serves the client SPA from `client/dist/`.
+  - Socket.IO: on subscribe server adds socket to poller; poller broadcast emits update payloads.
 - `client/` - React + Vite client
 - `src/App.jsx` - main UI, socket connecting/subscribing, status dot, theme switch, left panel.
 - `src/MapPlane.jsx` - Leaflet map and animated markers, interpolation/extrapolation logic.
