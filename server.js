@@ -10,7 +10,7 @@ const { Server } = require('socket.io');
 /*
   Env config
 */
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 80;
 const DEFAULT_LAT = parseFloat(process.env.DEFAULT_LAT || '51.456121');
 const DEFAULT_LON = parseFloat(process.env.DEFAULT_LON || '-0.384506');
 const DEFAULT_RADIUS = process.env.DEFAULT_RADIUS || '250';
