@@ -164,14 +164,15 @@ hr { border: none; border-top: 1px solid rgba(0,0,0,0.06); margin: 8px 0; }
 }
 
 .theme-toggle {
-  position: fixed;
-  left: 22px;   /* moved right a bit */
-  bottom: 20px; /* moved up a bit */
-  z-index: 3000;
+  position: static;   /* let it flow naturally in the flex container */
+  left: auto;
+  bottom: auto;
   display: flex;
   align-items: center;
   gap: 8px;
+  z-index: auto;
 }
+
 
 .switch {
   position: relative;
