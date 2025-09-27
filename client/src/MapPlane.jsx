@@ -26,7 +26,7 @@ function MapInvalidate({ center }) {
 }
 
 // Default plane icon (used as fallback)
-function createPlaneDivIcon(angle = 0, size = 44, color = '#ffdd57', opacity = 1) {
+function createPlaneDivIcon(angle = 0, size = 44, color = '#a357ff', opacity = 1) {
   const svg = `
     <div style="transform: rotate(${angle}deg); display:flex; align-items:center; justify-content:center; opacity:${opacity};">
       <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24">
@@ -349,34 +349,34 @@ function getAircraftIcon(category, angle = 0, isNearest = false) {
   
   // Default bright colors for nearest aircraft
   const brightColors = {
-    'A0': '#808080',
-    'A1': '#87CEEB',
-    'A2': '#4169E1',
-    'A3': '#FF8C00',
-    'A4': '#FF4500',
-    'A5': '#8B0000',
-    'A6': '#FF1493',
-    'A7': '#32CD32',
-    'B0': '#808080',
-    'B1': '#F0E68C',
-    'B2': '#FFB6C1',
-    'B3': '#00CED1',
-    'B4': '#ADFF2F',
-    'B5': '#696969',
-    'B6': '#9370DB',
-    'B7': '#000080',
-    'C0': '#808080',
-    'C1': '#FF0000',
-    'C2': '#FFA500',
-    'C3': '#DC143C',
-    'C4': '#8B0000',
-    'C5': '#8B4513',
-    'C6': '#696969',
-    'C7': '#696969'
+    'A0': '#a357ff',
+    'A1': '#a357ff',
+    'A2': '#a357ff',
+    'A3': '#a357ff',
+    'A4': '#a357ff',
+    'A5': '#a357ff',
+    'A6': '#a357ff',
+    'A7': '#a357ff',
+    'B0': '#a357ff',
+    'B1': '#a357ff',
+    'B2': '#a357ff',
+    'B3': '#a357ff',
+    'B4': '#a357ff',
+    'B5': '#a357ff',
+    'B6': '#a357ff',
+    'B7': '#a357ff',
+    'C0': '#a357ff',
+    'C1': '#a357ff',
+    'C2': '#a357ff',
+    'C3': '#a357ff',
+    'C4': '#a357ff',
+    'C5': '#a357ff',
+    'C6': '#a357ff',
+    'C7': '#a357ff'
   };
   
   const colorMap = isNearest ? brightColors : mutedColors;
-  const color = colorMap[category] || (isNearest ? '#ffdd57' : '#9aa');
+  const color = colorMap[category] || (isNearest ? '#a357ff' : '#9aa');
   
   switch(category) {
     case 'A0': return createIconA0(angle, size, color, opacity);
