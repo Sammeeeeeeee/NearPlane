@@ -201,9 +201,12 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <h1>NearPlane</h1>
         <div style={{display:'flex', alignItems:'center', gap:8}}>
           <StatusDot status={status} />
+          <h1 style={{margin:0}}>NearPlane</h1>
+        </div>
+        <div style={{display:'flex', alignItems:'center', gap:8}}>
+          <ThemeSwitch />
         </div>
       </header>
 
@@ -318,8 +321,6 @@ export default function App() {
           <MapPlane userPos={userPos} aircraft={nearest} others={others} />
         </section>
       </main>
-
-      <ThemeSwitch />
     </div>
   );
 }
