@@ -1,8 +1,8 @@
-// client/src/App.jsx
 import React, { useEffect, useState, useRef } from 'react';
 import io from 'socket.io-client';
 import MapPlane from './MapPlane';
 import './style.css';
+import logo from './logo.svg';
 
 /* Utility: haversine distance in km */
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -204,6 +204,7 @@ export default function App() {
         <div style={{display:'flex', alignItems:'center', gap:8}}>
           <StatusDot status={status} />
           <h1 style={{margin:0}}>NearPlane</h1>
+          <img src={logo} style={{height: 28, width: 'auto'}} />
         </div>
         <div style={{display:'flex', alignItems:'center', gap:8}}>
           <ThemeSwitch />

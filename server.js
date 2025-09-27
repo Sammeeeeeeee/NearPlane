@@ -10,7 +10,7 @@ const { Server } = require('socket.io');
 /*
   Env config
 */
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 80;
 const DEFAULT_LAT = parseFloat(process.env.DEFAULT_LAT || '51.456121');
 const DEFAULT_LON = parseFloat(process.env.DEFAULT_LON || '-0.384506');
 const DEFAULT_RADIUS = process.env.DEFAULT_RADIUS || '250';
@@ -33,7 +33,6 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-/* --- existing helper functions --- */
 function toNumber(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
 function sanitizeAircraft(a) {
   if (!a) return null;
@@ -42,6 +41,7 @@ function sanitizeAircraft(a) {
     flight: (a.flight || '').trim(),
     reg: a.r || null,
     type: a.t || a.type || null,
+    category: a.category || null,  
     lat: toNumber(a.lat),
     lon: toNumber(a.lon),
     gs: toNumber(a.gs),
