@@ -14,8 +14,8 @@ Minimal single-container app that shows the **nearest aircraft** to the user's l
 - Per-location poller: single server poller per distinct lat/lon/radius key (prevents duplication)
 - Request token bucket to avoid spamming third-party APIs
 - Light/Dark mode
-- Expandeble section with the other nearest aircraft
-- Colour change on aircraft in emergancy
+- Expandable section with the other nearest aircraft
+- Colour change on aircraft in emergency
 
 ## Screenshots
 <div align="center">
@@ -49,6 +49,7 @@ Minimal single-container app that shows the **nearest aircraft** to the user's l
 | `PORT`               | Port for the server to listen on                                            | ❌       | `80`    |
 | `NODE_ENV`           | Node.js environment (`development` or `production`)                        | ❌       | `production` |
 | `USE_THUMBNAILS`     | Enable DOC8643 thumbnail lookups (`true` or `false`)                       | ❌       | `true` |
+| `SHOW_OTHERS_EXPANDED` | Show "Other planes nearby" section expanded by default                   | ❌       | `false` |
 
 
 ## Sample Docker Compose
