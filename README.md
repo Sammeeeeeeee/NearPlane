@@ -50,6 +50,7 @@ Minimal single-container app that shows the **nearest aircraft** to the user's l
 | `NODE_ENV`           | Node.js environment (`development` or `production`)                        | ❌       | `production` |
 | `USE_THUMBNAILS`     | Enable DOC8643 thumbnail lookups (`true` or `false`)                       | ❌       | `true` |
 | `SHOW_OTHERS_EXPANDED` | Show "Other planes nearby" section expanded by default                   | ❌       | `false` |
+| `HIDE_GROUND_VEHICLES` | Hide Category C aircraft (ground vehicles/obstacles) from the nearby list | ❌       | `false` |
 
 
 ## Sample Docker Compose
@@ -63,6 +64,7 @@ services:
       - "80:80"
     environment:
       PORT: 80
+      SHOW_OTHERS_EXPANDED: "true"
 ```
 
 ## Build & Run (Docker)

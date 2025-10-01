@@ -30,6 +30,7 @@ const OVERRIDE_LON = (process.env.OVERRIDE_LON !== undefined && process.env.OVER
 const ENRICH_CONCURRENCY = parseInt(process.env.ENRICH_CONCURRENCY || '3', 10);
 
 const SHOW_OTHERS_EXPANDED = process.env.SHOW_OTHERS_EXPANDED === 'true';
+const HIDE_GROUND_VEHICLES = process.env.HIDE_GROUND_VEHICLES === 'true';
 
 const app = express();
 const server = http.createServer(app);
