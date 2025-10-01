@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Circle, CircleMarker, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Circle, CircleMarker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 
 function Recenter({ center }) {
@@ -23,6 +23,76 @@ function MapInvalidate({ center }) {
   }, [center, map]);
 
   return null;
+}
+
+// Helper function to format aircraft info for popup
+function formatAircraftInfo(aircraft, userPos) {
+  const parts = [];
+  
+  // Callsign/Registration
+  const identifier = aircraft.flight || aircraft.callsign || aircraft.reg || aircraft.hex || 'Unknown';
+  parts.push('<div style="font-weight: 700; font-size: 15px; margin-bottom: 8px; color: #0b1220;">' + identifier + '</div>');
+  
+  // Aircraft type
+  if (aircraft.aircraft_name || aircraft.type) {
+    parts.push('<div style="margin-bottom: 6px;"><strong>Type:</strong> ' + (aircraft.aircraft_name || aircraft.type) + '</div>');
+  }
+  
+  // Registration
+  if (aircraft.reg) {
+    parts.push('<div style="margin-bottom: 6px;"><strong>Registration:</strong> ' + aircraft.reg + '</div>');
+  }
+  
+  // Airline
+  if (aircraft.airline) {
+    parts.push('<div style="margin-bottom: 6px;"><strong>Airline:</strong> ' + aircraft.airline + '</div>');
+  }
+  
+  // Route
+  if (aircraft.from || aircraft.from_obj) {
+    const fromText = aircraft.from_obj 
+      ? (aircraft.from_obj.city || '') + ' (' + (aircraft.from_obj.iata || aircraft.from_obj.name || '') + ')'
+      : aircraft.from;
+    const toText = aircraft.to_obj 
+      ? (aircraft.to_obj.city || '') + ' (' + (aircraft.to_obj.iata || aircraft.to_obj.name || '') + ')'
+      : aircraft.to;
+    parts.push('<div style="margin-bottom: 6px;"><strong>Route:</strong> ' + (fromText || '—') + ' → ' + (toText || '—') + '</div>');
+  }
+  
+  // Speed
+  if (aircraft.gs !== undefined && aircraft.gs !== null) {
+    const mph = Math.round(aircraft.gs * 1.15078);
+    parts.push('<div style="margin-bottom: 6px;"><strong>Speed:</strong> ' + mph + ' mph</div>');
+  }
+  
+  // Altitude
+  if (aircraft.alt_baro !== undefined && aircraft.alt_baro !== null) {
+    parts.push('<div style="margin-bottom: 6px;"><strong>Altitude:</strong> ' + Math.round(aircraft.alt_baro) + ' ft</div>');
+  }
+  
+  // Track/Heading
+  if (aircraft.track !== undefined && aircraft.track !== null) {
+    parts.push('<div style="margin-bottom: 6px;"><strong>Heading:</strong> ' + Math.round(aircraft.track) + '°</div>');
+  }
+  
+  // Distance from user
+  if (userPos && aircraft.lat && aircraft.lon) {
+    const R = 6371;
+    const toRad = v => v * Math.PI / 180;
+    const dLat = toRad(aircraft.lat - userPos.lat);
+    const dLon = toRad(aircraft.lon - userPos.lon);
+    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(userPos.lat))*Math.cos(toRad(aircraft.lat))*Math.sin(dLon/2)**2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const dist = R * c;
+    parts.push('<div style="margin-bottom: 6px;"><strong>Distance:</strong> ' + dist.toFixed(2) + ' km</div>');
+  }
+  
+  // Emergency status
+  if (aircraft.emergency && aircraft.emergency !== 'none') {
+    parts.push('<div style="margin-top: 8px; padding: 6px; background: #ff3b30; color: white; border-radius: 4px; font-weight: 700;">⚠️ EMERGENCY: ' + aircraft.emergency + '</div>');
+  }
+  
+  return '<div style="font-size: 13px; line-height: 1.5; color: #5b6771; min-width: 200px;">' + parts.join('') + '</div>';
 }
 
 // Default plane icon (used as fallback)
@@ -63,7 +133,7 @@ function createIconA1(angle = 0, size = 44, color = '#87CEEB', opacity = 1) {
 function createIconA2(angle = 0, size = 44, color = '#4169E1', opacity = 1) {
   const svg = `
     <div style="transform: rotate(${angle}deg); display:flex; align-items:center; justify-content:center; opacity:${opacity};">
-      <svg xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:svg="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 30 30" version="1.1" id="svg822" inkscape:version="0.92.4 (f8dce91, 2019-08-02)" sodipodi:docname="airplane.svg" fill="${color}" transform="rotate(270)"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <defs id="defs816"></defs> <sodipodi:namedview id="base" pagecolor="#ffffff" bordercolor="#666666" borderopacity="1.0" inkscape:pageopacity="0.0" inkscape:pageshadow="2" inkscape:zoom="17.833333" inkscape:cx="15" inkscape:cy="15" inkscape:document-units="px" inkscape:current-layer="layer1" showgrid="true" units="px" inkscape:window-width="1366" inkscape:window-height="713" inkscape:window-x="0" inkscape:window-y="0" inkscape:window-maximized="1" inkscape:lockguides="true" inkscape:snap-global="true"> <inkscape:grid type="xygrid" id="grid816"></inkscape:grid> </sodipodi:namedview> <metadata id="metadata819"> <rdf:rdf> <cc:work rdf:about=""> <dc:format>image/svg+xml</dc:format> <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"></dc:type> <dc:title> </dc:title> </cc:work> </rdf:rdf> </metadata> <g inkscape:label="Layer 1" inkscape:groupmode="layer" id="layer1" transform="translate(0,-289.0625)"> <path style="opacity:1;fill:${color};fill-opacity:1;stroke:none;stroke-width:0.5;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" d="m 9.152311,294.0625 3.964824,7.99842 c -1.515168,0.007 -3.662727,0.51835 -5.4609114,1.02444 L 5.2226469,300.10269 C 4.9696321,299.79256 4.8821528,299.63186 4.5839798,299.63184 H 3.5390647 3.0000015 l 2.15233,4.34398 L 3,308.31979 l 0.5390634,-1e-5 h 1.0449149 c 0.2981875,0 0.3856426,-0.16269 0.6386645,-0.4728 l 2.2988191,-2.81719 c 1.8170981,0.51651 4.0300351,1.0515 5.5819981,1.06187 l -3.95115,7.97084 0.999996,-10e-6 1.943348,10e-6 c 0.553998,-10e-6 0.717401,-0.29856 1.187496,-0.87471 l 5.796842,-7.10599 c 4.118952,-0.062 7.373003,-0.92843 7.373008,-2.00551 -2e-6,-1.07501 -3.241889,-1.9405 -7.349574,-2.00551 l -5.820278,-7.13357 c -0.470082,-0.57616 -0.633494,-0.87471 -1.187492,-0.87471 h -1.943348 z" id="rect818" inkscape:connector-curvature="0"></path> </g> </g></svg>
+      <svg xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:svg="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 30 30" version="1.1" id="svg822" inkscape:version="0.92.4 (f8dce91, 2019-08-02)" sodipodi:docname="airplane.svg" fill="${color}" transform="rotate(270)"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <defs id="defs816"></defs> <sodipodi:namedview id="base" pagecolor="#ffffff" bordercolor="#666666" borderopacity="1.0" inkscape:pageopacity="0.0" inkscape:pageshadow="2" inkscape:zoom="17.833333" inkscape:cx="15" inkscape:cy="15" inkscape:document-units="px" inkscape:current-layer="layer1" showgrid="true" units="px" inkscape:window-width="1366" inkscape:window-height="713" inkscape:window-x="0" inkscape:window-y="0" inkscape:window-maximized="1" inkscape:lockguides="true" inkscape:snap-global="true"> <inkscape:grid type="xygrid" id="grid816"></inkscape:grid> </sodipodi:namedview> <metadata id="metadata819"> <rdf:RDF> <cc:Work rdf:about=""> <dc:format>image/svg+xml</dc:format> <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"></dc:type> <dc:title> </dc:title> </cc:Work> </rdf:RDF> </metadata> <g inkscape:label="Layer 1" inkscape:groupmode="layer" id="layer1" transform="translate(0,-289.0625)"> <path style="opacity:1;fill:${color};fill-opacity:1;stroke:none;stroke-width:0.5;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" d="m 9.152311,294.0625 3.964824,7.99842 c -1.515168,0.007 -3.662727,0.51835 -5.4609114,1.02444 L 5.2226469,300.10269 C 4.9696321,299.79256 4.8821528,299.63186 4.5839798,299.63184 H 3.5390647 3.0000015 l 2.15233,4.34398 L 3,308.31979 l 0.5390634,-1e-5 h 1.0449149 c 0.2981875,0 0.3856426,-0.16269 0.6386645,-0.4728 l 2.2988191,-2.81719 c 1.8170981,0.51651 4.0300351,1.0515 5.5819981,1.06187 l -3.95115,7.97084 0.999996,-10e-6 1.943348,10e-6 c 0.553998,-10e-6 0.717401,-0.29856 1.187496,-0.87471 l 5.796842,-7.10599 c 4.118952,-0.062 7.373003,-0.92843 7.373008,-2.00551 -2e-6,-1.07501 -3.241889,-1.9405 -7.349574,-2.00551 l -5.820278,-7.13357 c -0.470082,-0.57616 -0.633494,-0.87471 -1.187492,-0.87471 h -1.943348 z" id="rect818" inkscape:connector-curvature="0"></path> </g> </g></svg>
     </div>
   `;
   return L.divIcon({ html: svg, className: '', iconSize: [size, size], iconAnchor: [size/2, size/2] });
@@ -245,7 +315,7 @@ function createIconC1(angle = 0, size = 44, color = '#FF0000', opacity = 1) {
 function createIconC2(angle = 0, size = 44, color = '#FFA500', opacity = 1) {
   const svg = `
     <div style="transform: rotate(${angle}deg); display:flex; align-items:center; justify-content:center; opacity:${opacity};">
-      <svg fill="${color}" height="${size}" width="${size}" version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 47.032 47.032" xml:space="preserve"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <g> <path d="M29.395,0H17.636c-3.117,0-5.643,3.467-5.643,6.584v34.804c0,3.116,2.526,5.644,5.643,5.644h11.759 c3.116,0,5.644-2.527,5.644-5.644V6.584C35.037,3.467,32.511,0,29.395,0z M34.05,14.188v11.665l-2.729,0.351v-4.806L34.05,14.188z M32.618,10.773c-1.016,3.9-2.219,8.51-2.219,8.51H16.631l-2.222-8.51C14.41,10.773,23.293,7.755,32.618,10.773z M15.741,21.713 v4.492l-2.73-0.349V14.502L15.741,21.713z M13.011,37.938V27.579l2.73,0.343v8.196L13.011,37.938z M14.568,40.882l2.218-3.336 h13.771l2.219,3.336H14.568z M31.321,35.805v-7.872l2.729-0.355v10.048L31.321,35.805z"></path> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> </g> </g></svg>
+      <svg fill="${color}" height="${size}" width="${size}" version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 47.032 47.032" xml:space="preserve"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <g> <path d="M29.395,0H17.636c-3.117,0-5.643,3.467-5.643,6.584v34.804c0,3.116,2.526,5.644,5.643,5.644h11.759 c3.116,0,5.644-2.527,5.644-5.644V6.584C35.037,3.467,32.511,0,29.395,0z M34.05,14.188v11.665l-2.729,0.351v-4.806L34.05,14.188z M32.618,10.773c-1.016,3.9-2.219,8.51-2.219,8.51H16.631l-2.222-8.51C14.41,10.773,23.293,7.755,32.618,10.773z M15.741,21.713 v4.492l-2.73-0.349V14.502L15.741,21.713z M13.011,37.938V27.579l2.73,0.343v8.196L13.011,37.938z M14.568,40.882l2.218-3.336 h13.771l2.219,3.336H14.568z M31.321,35.805v-7.872l2.729-0.355v10.048L31.321,35.805z"></path> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> </g> </g></svg>
     </div>
   `;
   return L.divIcon({ html: svg, className: '', iconSize: [size, size], iconAnchor: [size/2, size/2] });
@@ -431,9 +501,12 @@ export default function MapPlane({ userPos, aircraft, others = [] }) {
             key={o.hex || `${o.lat}-${o.lon}-${i}`}
             position={[o.lat, o.lon]}
             icon={getAircraftIcon(o.category, o.track || 0, false)}
-            interactive={false}
             zIndexOffset={0}
-          />
+          >
+            <Popup>
+              <div dangerouslySetInnerHTML={{ __html: formatAircraftInfo(o, userPos) }} />
+            </Popup>
+          </Marker>
         ) : null
       ))}
 
@@ -441,9 +514,12 @@ export default function MapPlane({ userPos, aircraft, others = [] }) {
         <Marker
           position={[aircraft.lat, aircraft.lon]}
           icon={getAircraftIcon(aircraft.category, aircraft.track || 0, true)}
-          interactive={false}
           zIndexOffset={1000}
-        />
+        >
+          <Popup>
+            <div dangerouslySetInnerHTML={{ __html: formatAircraftInfo(aircraft, userPos) }} />
+          </Popup>
+        </Marker>
       )}
     </MapContainer>
   );

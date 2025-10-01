@@ -328,7 +328,7 @@ export default function App() {
                     </div>
                     <div style={{marginTop:6}}>
                       { o.from_obj ? renderAirportShort(o.from_obj) : (o.from || '—') }
-                      <span style={{opacity:0.85}}> -> </span>
+                      <span style={{opacity:0.85}}> → </span>
                       { o.to_obj ? renderAirportShort(o.to_obj) : (o.to || '—') }
                     </div>
                   </div>
