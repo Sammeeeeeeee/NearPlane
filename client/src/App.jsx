@@ -127,6 +127,7 @@ export default function App() {
   const socketRef = useRef(null);
   const lastPosRef = useRef(null);
   const subscribedRef = useRef(false);
+  const hasSetInitialExpanded = useRef(false);
 
   useEffect(() => {
     // connect to same-origin socket.io
@@ -150,7 +151,13 @@ export default function App() {
       console.error('socket error', e);
     });
 
-    socket.on('update', ({ nearest: n, others: o, othersTotal: total }) => {
+    socket.on('update', ({ nearest: n, others: o, othersTotal: total, showOthersExpanded }) => {
+      // Set default expanded state on first update only
+      if (showOthersExpanded !== undefined && !hasSetInitialExpanded.current) {
+        setShowOthersList(showOthersExpanded);
+        hasSetInitialExpanded.current = true;
+      }
+
       if (!n) {
         setNearest(null);
         setOthers(Array.isArray(o) ? o : []);
