@@ -1,36 +1,26 @@
-// server.js
-// Centralized poller + rate-limited outbound requests + caches
-// Node 18+ (uses global fetch)
-
+// server.js - Complete file with theme and zoom env variables
 const express = require('express');
 const path = require('path');
 const http = require('http');
 const { Server } = require('socket.io');
 
-/*
-  Env config
-*/
 const PORT = process.env.PORT || 80;
 const DEFAULT_LAT = parseFloat(process.env.DEFAULT_LAT || '51.456121');
 const DEFAULT_LON = parseFloat(process.env.DEFAULT_LON || '-0.384506');
 const DEFAULT_RADIUS = process.env.DEFAULT_RADIUS || '250';
-
-const POLL_MS = parseInt(process.env.POLL_MS || '5000', 10);        // nearest
-const OTHER_POLL_MS = parseInt(process.env.OTHER_POLL_MS || '20000', 10); // others
+const POLL_MS = parseInt(process.env.POLL_MS || '5000', 10);
+const OTHER_POLL_MS = parseInt(process.env.OTHER_POLL_MS || '20000', 10);
 const OTHERS_LIMIT = parseInt(process.env.OTHERS_LIMIT || '10', 10);
-
 const CALLSIGN_TTL = parseInt(process.env.CALLSIGN_TTL || '60000', 10);
 const ROUTESET_TTL = parseInt(process.env.ROUTESET_TTL || '120000', 10);
-
 const MAX_REQUESTS_PER_MIN = parseInt(process.env.MAX_REQUESTS_PER_MIN || '60', 10);
-
 const OVERRIDE_LAT = (process.env.OVERRIDE_LAT !== undefined && process.env.OVERRIDE_LAT !== '') ? Number(process.env.OVERRIDE_LAT) : null;
 const OVERRIDE_LON = (process.env.OVERRIDE_LON !== undefined && process.env.OVERRIDE_LON !== '') ? Number(process.env.OVERRIDE_LON) : null;
-
 const ENRICH_CONCURRENCY = parseInt(process.env.ENRICH_CONCURRENCY || '3', 10);
-
 const SHOW_OTHERS_EXPANDED = process.env.SHOW_OTHERS_EXPANDED === 'true';
 const HIDE_GROUND_VEHICLES = process.env.HIDE_GROUND_VEHICLES === 'true';
+const THEME_MODE = process.env.THEME_MODE || 'system';
+const DEFAULT_MAP_ZOOM = parseInt(process.env.DEFAULT_MAP_ZOOM || '11', 10);
 
 const app = express();
 const server = http.createServer(app);
@@ -40,73 +30,43 @@ function toNumber(v) { const n = Number(v); return Number.isFinite(n) ? n : null
 function sanitizeAircraft(a) {
   if (!a) return null;
   return {
-    hex: a.hex,
-    flight: (a.flight || '').trim(),
-    reg: a.r || null,
-    type: a.t || a.type || null,
-    category: a.category || null,  
-    lat: toNumber(a.lat),
-    lon: toNumber(a.lon),
-    gs: toNumber(a.gs),
-    tas: toNumber(a.tas),
-    ias: toNumber(a.ias),
-    alt_baro: toNumber(a.alt_baro),
-    track: toNumber(a.track),
-    heading: toNumber(a.true_heading || a.mag_heading),
-    seen: toNumber(a.seen),
-    dst: a.dst,
+    hex: a.hex, flight: (a.flight || '').trim(), reg: a.r || null, type: a.t || a.type || null,
+    category: a.category || null, lat: toNumber(a.lat), lon: toNumber(a.lon), gs: toNumber(a.gs),
+    tas: toNumber(a.tas), ias: toNumber(a.ias), alt_baro: toNumber(a.alt_baro), track: toNumber(a.track),
+    heading: toNumber(a.true_heading || a.mag_heading), seen: toNumber(a.seen), dst: a.dst,
     emergency: a.emergency || 'none'
   };
 }
 function haversineKm(lat1, lon1, lat2, lon2) {
   if (!lat1 || !lon1 || !lat2 || !lon2) return Number.POSITIVE_INFINITY;
-  const R = 6371;
-  const toRad = v => v * Math.PI / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
+  const R = 6371, toRad = v => v * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
   const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-/* --- load airline map (unchanged) --- */
 let AIRLINE_MAP = {};
 (async () => {
   try {
-    const u = 'https://gist.githubusercontent.com/AndreiCalazans/390e82a1c3edff852137cb3da813eceb/raw/1a1248f966b3f644f4eae057ad9b9b1b571c6aec/airlines.json';
-    const r = await fetch(u);
+    const r = await fetch('https://gist.githubusercontent.com/AndreiCalazans/390e82a1c3edff852137cb3da813eceb/raw/1a1248f966b3f644f4eae057ad9b9b1b571c6aec/airlines.json');
     if (r.ok) AIRLINE_MAP = await r.json();
     console.log('airline map loaded entries=', Object.keys(AIRLINE_MAP).length);
-  } catch (e) {
-    console.warn('airline map load failed:', e && e.message ? e.message : e);
-  }
+  } catch (e) { console.warn('airline map load failed:', e && e.message ? e.message : e); }
 })();
 
-/* --- load 3-letter CSV map (unchanged) --- */
 const THREE_LETTER_MAP = {};
 (async function loadThreeLetterMap() {
   try {
-    const url = 'https://raw.githubusercontent.com/rikgale/ICAOList/refs/heads/main/Airlines.csv';
-    const resp = await fetch(url);
-    if (!resp.ok) {
-      console.warn('failed to fetch 3-letter CSV', resp.status);
-      return;
-    }
+    const resp = await fetch('https://raw.githubusercontent.com/rikgale/ICAOList/refs/heads/main/Airlines.csv');
+    if (!resp.ok) return console.warn('failed to fetch 3-letter CSV', resp.status);
     const txt = await resp.text();
-
     function parseCSV(text) {
-      const rows = [];
-      let cur = [];
-      let i = 0;
-      let field = '';
-      let inQuotes = false;
+      const rows = []; let cur = [], i = 0, field = '', inQuotes = false;
       while (i < text.length) {
         const ch = text[i];
         if (inQuotes) {
-          if (ch === '"') {
-            if (text[i+1] === '"') { field += '"'; i += 2; continue; }
-            inQuotes = false; i++; continue;
-          } else { field += ch; i++; continue; }
+          if (ch === '"') { if (text[i+1] === '"') { field += '"'; i += 2; continue; } inQuotes = false; i++; continue; }
+          else { field += ch; i++; continue; }
         } else {
           if (ch === '"') { inQuotes = true; i++; continue; }
           if (ch === ',') { cur.push(field); field = ''; i++; continue; }
@@ -119,46 +79,29 @@ const THREE_LETTER_MAP = {};
       if (cur.length) rows.push(cur);
       return rows;
     }
-
     const rows = parseCSV(txt);
     for (let r of rows) {
       if (!r || r.length < 4) continue;
-      const company = (r[0] || '').trim();
-      const code = (r[3] || '').trim().toUpperCase();
+      const company = (r[0] || '').trim(), code = (r[3] || '').trim().toUpperCase();
       if (company && code) THREE_LETTER_MAP[code] = company;
     }
     console.log('3-letter airline map loaded entries=', Object.keys(THREE_LETTER_MAP).length);
-  } catch (e) {
-    console.warn('failed to load 3-letter map', e && e.message ? e.message : e);
-  }
+  } catch (e) { console.warn('failed to load 3-letter map', e && e.message ? e.message : e); }
 })();
 
-/* --- NEW: load aircraft designator CSV (ICAOList.csv) into AIRCRAFT_TYPE_MAP --- */
 const AIRCRAFT_TYPE_MAP = {};
 (async function loadAircraftTypeMap() {
   try {
-    const url = 'https://raw.githubusercontent.com/rikgale/ICAOList/refs/heads/main/ICAOList.csv';
-    const resp = await fetch(url);
-    if (!resp.ok) {
-      console.warn('failed to fetch ICAOList.csv', resp.status);
-      return;
-    }
+    const resp = await fetch('https://raw.githubusercontent.com/rikgale/ICAOList/refs/heads/main/ICAOList.csv');
+    if (!resp.ok) return console.warn('failed to fetch ICAOList.csv', resp.status);
     const txt = await resp.text();
-
-    // CSV parse (same style as above)
     function parseCSV(text) {
-      const rows = [];
-      let cur = [];
-      let i = 0;
-      let field = '';
-      let inQuotes = false;
+      const rows = []; let cur = [], i = 0, field = '', inQuotes = false;
       while (i < text.length) {
         const ch = text[i];
         if (inQuotes) {
-          if (ch === '"') {
-            if (text[i+1] === '"') { field += '"'; i += 2; continue; }
-            inQuotes = false; i++; continue;
-          } else { field += ch; i++; continue; }
+          if (ch === '"') { if (text[i+1] === '"') { field += '"'; i += 2; continue; } inQuotes = false; i++; continue; }
+          else { field += ch; i++; continue; }
         } else {
           if (ch === '"') { inQuotes = true; i++; continue; }
           if (ch === ',') { cur.push(field); field = ''; i++; continue; }
@@ -171,26 +114,19 @@ const AIRCRAFT_TYPE_MAP = {};
       if (cur.length) rows.push(cur);
       return rows;
     }
-
     const rows = parseCSV(txt);
     for (let r of rows) {
-      // expected columns: [TypeDesignator, Class, Number+Engine Type, "MANUFACTURER, Model"]
       if (!r || r.length < 4) continue;
-      const designator = (r[0] || '').trim().toUpperCase();
-      const manufacturerModel = (r[3] || '').trim();
+      const designator = (r[0] || '').trim().toUpperCase(), manufacturerModel = (r[3] || '').trim();
       if (designator && manufacturerModel) {
-        // normalize designator (remove spaces/illegal chars)
         const key = designator.replace(/[^A-Z0-9_-]/g, '');
         AIRCRAFT_TYPE_MAP[key] = manufacturerModel;
       }
     }
     console.log('aircraft type map loaded entries=', Object.keys(AIRCRAFT_TYPE_MAP).length);
-  } catch (e) {
-    console.warn('failed to load aircraft type map', e && e.message ? e.message : e);
-  }
+  } catch (e) { console.warn('failed to load aircraft type map', e && e.message ? e.message : e); }
 })();
 
-/* --- rate-limited fetch (token bucket) --- */
 class TokenBucket {
   constructor(limitPerMin) {
     this.capacity = Math.max(1, Math.floor(limitPerMin));
@@ -200,10 +136,7 @@ class TokenBucket {
   }
   _refillIfNeeded() {
     const now = Date.now();
-    if (now - this.lastRefill >= this.refillInterval) {
-      this.tokens = this.capacity;
-      this.lastRefill = now;
-    }
+    if (now - this.lastRefill >= this.refillInterval) { this.tokens = this.capacity; this.lastRefill = now; }
   }
   async take() {
     while (true) {
@@ -221,8 +154,7 @@ async function rateLimitedFetch(url, opts = {}) {
   console.log(`[OUT] ${new Date(t0).toISOString()} → ${opts.method || 'GET'} ${url}`);
   try {
     const res = await fetch(url, opts);
-    const took = Date.now() - t0;
-    console.log(`[OUT-RESP] status=${res.status} tookMs=${took} url=${url}`);
+    console.log(`[OUT-RESP] status=${res.status} tookMs=${Date.now() - t0} url=${url}`);
     return res;
   } catch (err) {
     console.error('[OUT-ERR]', err && err.message ? err.message : err);
@@ -230,23 +162,17 @@ async function rateLimitedFetch(url, opts = {}) {
   }
 }
 
-/* --- caches & utilities (unchanged) --- */
-const callsignCache = new Map();
-const routesetCache = new Map();
+const callsignCache = new Map(), routesetCache = new Map();
 function cacheGet(map, key) {
   const e = map.get(key);
   if (!e) return null;
   if (Date.now() > e.expires) { map.delete(key); return null; }
   return e.value;
 }
-function cacheSet(map, key, value, ttl) {
-  map.set(key, { value, expires: Date.now() + ttl });
-}
+function cacheSet(map, key, value, ttl) { map.set(key, { value, expires: Date.now() + ttl }); }
 function makeKey(lat, lon, radius) {
   const dec = 3;
-  const rlat = (Math.round(lat * (10**dec)) / (10**dec)).toFixed(dec);
-  const rlon = (Math.round(lon * (10**dec)) / (10**dec)).toFixed(dec);
-  return `${rlat}_${rlon}_${radius}`;
+  return `${(Math.round(lat * (10**dec)) / (10**dec)).toFixed(dec)}_${(Math.round(lon * (10**dec)) / (10**dec)).toFixed(dec)}_${radius}`;
 }
 const pollers = new Map();
 function parallelLimit(items, fn, concurrency = 3) {
@@ -259,30 +185,21 @@ function parallelLimit(items, fn, concurrency = 3) {
       try { results[i] = await fn(items[i], i); } catch (e) { results[i] = { error: e && e.message ? e.message : e }; }
     }
   }
-  const workers = Array.from({ length: Math.max(1, concurrency) }, () => worker());
-  return Promise.all(workers).then(()=>results);
+  return Promise.all(Array.from({ length: Math.max(1, concurrency) }, () => worker())).then(()=>results);
 }
 
 app.get('/api/docimg/:code.jpg', async (req, res) => {
   try {
-    const codeRaw = req.params.code || '';
-    const code = String(codeRaw).replace(/[^A-Za-z0-9_-]/g, '').toUpperCase();
+    const code = String(req.params.code || '').replace(/[^A-Za-z0-9_-]/g, '').toUpperCase();
     if (!code) return res.status(400).send('bad code');
-
-    const remote = `https://doc8643.com/static/img/aircraft/large/${encodeURIComponent(code)}.jpg`;
-
-    const r = await rateLimitedFetch(remote, { redirect: 'follow' });
-
+    const r = await rateLimitedFetch(`https://doc8643.com/static/img/aircraft/large/${encodeURIComponent(code)}.jpg`, { redirect: 'follow' });
     if (!r.ok) {
       const txt = await (r.text().catch(()=>'')); 
-      res.status(r.status).type('text/plain').send(`Upstream returned ${r.status}: ${txt.slice ? txt.slice(0,200) : ''}`);
-      return;
+      return res.status(r.status).type('text/plain').send(`Upstream returned ${r.status}: ${txt.slice ? txt.slice(0,200) : ''}`);
     }
-
-    const arrayBuffer = await r.arrayBuffer();
-    const buf = Buffer.from(arrayBuffer);
+    const buf = Buffer.from(await r.arrayBuffer());
     res.setHeader('Content-Type', r.headers.get('content-type') || 'image/jpeg');
-    res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=3600'); // 24h
+    res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=3600');
     res.send(buf);
   } catch (err) {
     console.error('[docimg proxy] error', err && err.message ? err.message : err);
@@ -290,89 +207,60 @@ app.get('/api/docimg/:code.jpg', async (req, res) => {
   }
 });
 
-/* --- poller implementation (modified to send ALL 'others' raw but only enrich the top OTHERS_LIMIT) --- */
 function ensurePoller(key, lat, lon, radius) {
   if (pollers.has(key)) return pollers.get(key);
-
-  const state = {
-    subs: new Set(),
-    lastOthersFetch: 0,
-    cachedOthers: [], // enriched subset (up to OTHERS_LIMIT)
-    rawOthers: [],    // full list from /v2/point (no enrichment)
-    othersTotal: 0,
-    timer: null
-  };
+  const state = { subs: new Set(), lastOthersFetch: 0, cachedOthers: [], rawOthers: [], othersTotal: 0, timer: null };
 
   function getAircraftFullName(type) {
     if (!type) return null;
     const code = String(type).trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
-    if (!code) return null;
     const found = AIRCRAFT_TYPE_MAP[code];
-    if (found) return `${found} (${code})`;
-    return null;
+    return found ? `${found} (${code})` : null;
   }
 
   async function fetchCycle() {
     try {
-      const closestUrl = `https://api.adsb.lol/v2/closest/${encodeURIComponent(lat)}/${encodeURIComponent(lon)}/${encodeURIComponent(radius)}`;
-      const r = await rateLimitedFetch(closestUrl, { headers: { accept: 'application/json' } });
+      const r = await rateLimitedFetch(`https://api.adsb.lol/v2/closest/${encodeURIComponent(lat)}/${encodeURIComponent(lon)}/${encodeURIComponent(radius)}`, { headers: { accept: 'application/json' } });
       if (!r.ok) {
         try { const txt = await r.text(); console.warn('[closest] non-ok', r.status, txt && txt.slice ? txt.slice(0,200) : ''); } catch(e){}
-        // broadcast nearest=null and the last-known raw list (so client can still render markers)
-        broadcast({ nearest: null, others: state.rawOthers || state.cachedOthers, othersTotal: state.othersTotal, now: Date.now() });
-        return;
+        return broadcast({ nearest: null, others: state.rawOthers || state.cachedOthers, othersTotal: state.othersTotal, now: Date.now() });
       }
       const json = await r.json();
-      const nearestRaw = (json.ac && json.ac.length) ? json.ac[0] : null;
-      const nearest = sanitizeAircraft(nearestRaw);
+      const nearest = sanitizeAircraft((json.ac && json.ac.length) ? json.ac[0] : null);
 
-      // Attach aircraft_name for nearest if mapping exists (do this early so UI gets it)
       if (nearest && nearest.type) {
         const full = getAircraftFullName(nearest.type);
         if (full) nearest.aircraft_name = full;
       }
 
-      // enrich nearest callsign (cache)
       if (nearest && nearest.flight) {
         const callsignKey = nearest.flight.trim();
         const cached = cacheGet(callsignCache, callsignKey);
-        if (cached) {
-          mergeNearestWithCallsign(nearest, cached);
-        } else {
+        if (cached) { mergeNearestWithCallsign(nearest, cached); }
+        else {
           try {
-            const csUrl = `https://api.adsb.lol/v2/callsign/${encodeURIComponent(callsignKey)}`;
-            const csr = await rateLimitedFetch(csUrl, { headers: { accept: 'application/json' } });
+            const csr = await rateLimitedFetch(`https://api.adsb.lol/v2/callsign/${encodeURIComponent(callsignKey)}`, { headers: { accept: 'application/json' } });
             if (csr.ok) {
-              const csJson = await csr.json();
-              const csAc = (csJson.ac && csJson.ac.length) ? csJson.ac[0] : null;
-              if (csAc) {
-                cacheSet(callsignCache, callsignKey, csAc, CALLSIGN_TTL);
-                mergeNearestWithCallsign(nearest, csAc);
-              }
+              const csAc = ((await csr.json()).ac || [])[0];
+              if (csAc) { cacheSet(callsignCache, callsignKey, csAc, CALLSIGN_TTL); mergeNearestWithCallsign(nearest, csAc); }
             }
           } catch (e) {}
         }
       }
 
-      // routeset for nearest (cache)
       if (nearest && nearest.flight) {
         const rsKey = nearest.flight.trim();
         const rcached = cacheGet(routesetCache, rsKey);
-        if (rcached) {
-          mergeNearestWithRouteset(nearest, rcached);
-        } else {
+        if (rcached) { mergeNearestWithRouteset(nearest, rcached); }
+        else {
           try {
             const rr = await rateLimitedFetch('https://api.adsb.lol/api/0/routeset', {
-              method: 'POST',
-              headers: { accept: 'application/json', 'content-type': 'application/json' },
+              method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' },
               body: JSON.stringify({ planes: [{ callsign: rsKey, lat: nearest.lat || lat, lng: nearest.lon || lon }] })
             });
             if (rr.ok) {
               const rjson = await rr.json();
-              if (Array.isArray(rjson) && rjson.length) {
-                cacheSet(routesetCache, rsKey, rjson[0], ROUTESET_TTL);
-                mergeNearestWithRouteset(nearest, rjson[0]);
-              }
+              if (Array.isArray(rjson) && rjson.length) { cacheSet(routesetCache, rsKey, rjson[0], ROUTESET_TTL); mergeNearestWithRouteset(nearest, rjson[0]); }
             }
           } catch (e) {}
         }
@@ -383,72 +271,37 @@ function ensurePoller(key, lat, lon, radius) {
         if (code) nearest.thumb = `/api/docimg/${code}.jpg`;
       }
 
-      // OTHERS: refresh at most every OTHER_POLL_MS
       const now = Date.now();
       if (!state.lastOthersFetch || (now - state.lastOthersFetch) >= OTHER_POLL_MS) {
         try {
-          const pointUrl = `https://api.adsb.lol/v2/point/${encodeURIComponent(lat)}/${encodeURIComponent(lon)}/${encodeURIComponent(radius)}`;
-          const pr = await rateLimitedFetch(pointUrl, { headers: { accept: 'application/json' } });
+          const pr = await rateLimitedFetch(`https://api.adsb.lol/v2/point/${encodeURIComponent(lat)}/${encodeURIComponent(lon)}/${encodeURIComponent(radius)}`, { headers: { accept: 'application/json' } });
           if (pr.ok) {
             const pjson = await pr.json();
-            let arr = [];
-            if (pjson.ac && Array.isArray(pjson.ac)) {
-              arr = pjson.ac.map(sanitizeAircraft).filter(a => a && a.lat && a.lon);
-            }
+            let arr = (pjson.ac && Array.isArray(pjson.ac)) ? pjson.ac.map(sanitizeAircraft).filter(a => a && a.lat && a.lon) : [];
             state.othersTotal = Array.isArray(pjson.ac) ? pjson.ac.length : arr.length;
-
             arr.sort((A, B) => {
               const da = (A && A.dst !== undefined && A.dst !== null) ? Number(A.dst) : haversineKm(lat, lon, A.lat, A.lon);
               const db = (B && B.dst !== undefined && B.dst !== null) ? Number(B.dst) : haversineKm(lat, lon, B.lat, B.lon);
               return da - db;
             });
-
-            // attach aircraft_name for each other (if mapped)
-            arr.forEach(a => {
-              if (a && a.type) {
-                const full = getAircraftFullName(a.type);
-                if (full) a.aircraft_name = full;
-              }
-            });
-
-            // FILTER OUT nearest from the others list (by hex)
+            arr.forEach(a => { if (a && a.type) { const full = getAircraftFullName(a.type); if (full) a.aircraft_name = full; } });
             const filteredAll = arr.filter(a => !(nearest && a.hex && nearest.hex && a.hex === nearest.hex));
-
-            // Save the raw full list so clients can render all markers without extra API calls
             state.rawOthers = filteredAll;
-
-            // But only enrich the first OTHERS_LIMIT entries (to avoid a flood of outbound requests)
-            const toEnrich = filteredAll.slice(0, Math.max(0, OTHERS_LIMIT));
-            state.cachedOthers = toEnrich;
-
+            state.cachedOthers = filteredAll.slice(0, Math.max(0, OTHERS_LIMIT));
             state.lastOthersFetch = Date.now();
-
-            // Enrich only the limited subset
             await enrichOthersCallsAndRoutes(state.cachedOthers, lat, lon);
-          } else {
-            console.warn('[point] non-ok', pr.status);
-          }
-        } catch (e) {
-          console.warn('[point] fetch failed', e && e.message ? e.message : e);
-        }
+          } else { console.warn('[point] non-ok', pr.status); }
+        } catch (e) { console.warn('[point] fetch failed', e && e.message ? e.message : e); }
       }
 
-      // Broadcast: send nearest and the FULL raw others list (clients will render all),
-      // while cachedOthers still holds the enriched subset (for any richer UI elements).
       broadcast({ nearest, others: state.rawOthers || state.cachedOthers, othersTotal: state.othersTotal, now: json.now || Date.now() });
-
     } catch (err) {
       console.error('[poller] cycle error', err && err.message ? err.message : err);
-      // on error, send whatever we have (prefer rawOthers so client can paint points)
       broadcast({ nearest: null, others: state.rawOthers || state.cachedOthers, othersTotal: state.othersTotal, now: Date.now() });
     }
   }
 
-  function broadcast(payload) {
-    for (const s of state.subs) {
-      try { s.emit('update', payload); } catch(e) {}
-    }
-  }
+  function broadcast(payload) { for (const s of state.subs) { try { s.emit('update', payload); } catch(e) {} } }
 
   function mergeNearestWithCallsign(nearest, csAc) {
     if (!nearest || !csAc) return;
@@ -457,16 +310,15 @@ function ensurePoller(key, lat, lon, radius) {
     nearest.to = nearest.to || csAc.to || csAc.d || csAc.destination || null;
     if (csAc.r) nearest.reg = csAc.r;
   }
+
   function mergeNearestWithRouteset(nearest, route) {
     if (!nearest || !route) return;
     if (route.airline_code) {
       const code = String(route.airline_code).trim().toUpperCase();
-      const full = THREE_LETTER_MAP[code] || AIRLINE_MAP[code] || code;
-      nearest.airline = `${full} (${code})`;
+      nearest.airline = `${THREE_LETTER_MAP[code] || AIRLINE_MAP[code] || code} (${code})`;
     }
     if (route._airports && route._airports.length) {
-      const a0 = route._airports[0];
-      const a1 = route._airports[1] || null;
+      const a0 = route._airports[0], a1 = route._airports[1] || null;
       if (a0) nearest.from_obj = { city: a0.location, name: a0.name, iata: a0.iata || a0.icao || '', countryiso: a0.countryiso2 || '' };
       if (a1) nearest.to_obj   = { city: a1.location, name: a1.name, iata: a1.iata || a1.icao || '', countryiso: a1.countryiso2 || '' };
     }
@@ -492,15 +344,13 @@ function ensurePoller(key, lat, lon, radius) {
     });
 
     await parallelLimit(toFetchCalls, async (item) => {
-      const key = item.key;
       try {
-        const csr = await rateLimitedFetch(`https://api.adsb.lol/v2/callsign/${encodeURIComponent(key)}`, { headers: { accept: 'application/json' } });
+        const csr = await rateLimitedFetch(`https://api.adsb.lol/v2/callsign/${encodeURIComponent(item.key)}`, { headers: { accept: 'application/json' } });
         if (!csr.ok) return;
-        const csjson = await csr.json();
-        const csAc = (csjson.ac && csjson.ac.length) ? csjson.ac[0] : null;
+        const csAc = ((await csr.json()).ac || [])[0];
         if (csAc) {
-          cacheSet(callsignCache, key, csAc, CALLSIGN_TTL);
-          const target = othersArr.find(x => x.flight && x.flight.trim() === key);
+          cacheSet(callsignCache, item.key, csAc, CALLSIGN_TTL);
+          const target = othersArr.find(x => x.flight && x.flight.trim() === item.key);
           if (target) {
             target.airline = target.airline || csAc.airline || csAc.operator || null;
             target.from = target.from || csAc.from || csAc.o || csAc.origin || null;
@@ -513,33 +363,26 @@ function ensurePoller(key, lat, lon, radius) {
 
     const toRouteset = othersArr.filter(o => o && o.flight && (!o.from_obj || !o.to_obj));
     if (toRouteset.length) {
-      const body = { planes: toRouteset.map(o => ({ callsign: o.flight, lat: o.lat || baseLat, lng: o.lon || baseLon })) };
       try {
         const rr = await rateLimitedFetch('https://api.adsb.lol/api/0/routeset', {
-          method: 'POST',
-          headers: { accept: 'application/json', 'content-type': 'application/json' },
-          body: JSON.stringify(body)
+          method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' },
+          body: JSON.stringify({ planes: toRouteset.map(o => ({ callsign: o.flight, lat: o.lat || baseLat, lng: o.lon || baseLon })) })
         });
         if (rr.ok) {
-          const rjson = await rr.json();
-          if (Array.isArray(rjson)) {
-            rjson.forEach(route => {
-              const callsign = route.callsign;
-              const target = othersArr.find(x => x.flight && x.flight.trim() === (callsign || '').trim());
-              if (!target) return;
-              if (route.airline_code) {
-                const code = String(route.airline_code).trim().toUpperCase();
-                const full = THREE_LETTER_MAP[code] || AIRLINE_MAP[code] || code;
-                target.airline = `${full} (${code})`;
-              }
-              if (route._airports && route._airports.length) {
-                const a0 = route._airports[0]; const a1 = route._airports[1] || null;
-                if (a0) target.from_obj = { city: a0.location, name: a0.name, iata: a0.iata || a0.icao || '', countryiso: a0.countryiso2 || '' };
-                if (a1) target.to_obj   = { city: a1.location, name: a1.name, iata: a1.iata || a1.icao || '', countryiso: a1.countryiso2 || '' };
-              }
-              if (route && route.callsign) cacheSet(routesetCache, route.callsign, route, ROUTESET_TTL);
-            });
-          }
+          (await rr.json()).forEach(route => {
+            const target = othersArr.find(x => x.flight && x.flight.trim() === (route.callsign || '').trim());
+            if (!target) return;
+            if (route.airline_code) {
+              const code = String(route.airline_code).trim().toUpperCase();
+              target.airline = `${THREE_LETTER_MAP[code] || AIRLINE_MAP[code] || code} (${code})`;
+            }
+            if (route._airports && route._airports.length) {
+              const a0 = route._airports[0], a1 = route._airports[1] || null;
+              if (a0) target.from_obj = { city: a0.location, name: a0.name, iata: a0.iata || a0.icao || '', countryiso: a0.countryiso2 || '' };
+              if (a1) target.to_obj   = { city: a1.location, name: a1.name, iata: a1.iata || a1.icao || '', countryiso: a1.countryiso2 || '' };
+            }
+            if (route && route.callsign) cacheSet(routesetCache, route.callsign, route, ROUTESET_TTL);
+          });
         }
       } catch (e) {}
     }
@@ -553,8 +396,7 @@ function ensurePoller(key, lat, lon, radius) {
 
 function maybeCleanupPoller(key) {
   const p = pollers.get(key);
-  if (!p) return;
-  if (!p.subs || p.subs.size === 0) {
+  if (p && (!p.subs || p.subs.size === 0)) {
     clearInterval(p.timer);
     pollers.delete(key);
     console.log('[poller] stopped and removed key=', key);
@@ -567,8 +409,7 @@ io.on('connection', socket => {
   console.log('[socket] connect', socket.id);
 
   socket.on('subscribe', async (opts = {}) => {
-    const clientLat = toNumber(opts.lat);
-    const clientLon = toNumber(opts.lon);
+    const clientLat = toNumber(opts.lat), clientLon = toNumber(opts.lon);
     const lat = (OVERRIDE_LAT !== null) ? OVERRIDE_LAT : (clientLat !== null ? clientLat : DEFAULT_LAT);
     const lon = (OVERRIDE_LON !== null) ? OVERRIDE_LON : (clientLon !== null ? clientLon : DEFAULT_LON);
     const radius = opts.radius || DEFAULT_RADIUS;
@@ -577,10 +418,7 @@ io.on('connection', socket => {
     const oldKey = socketToKey.get(socket.id);
     if (oldKey && oldKey !== key) {
       const oldPoll = pollers.get(oldKey);
-      if (oldPoll) {
-        oldPoll.subs.delete(socket);
-        maybeCleanupPoller(oldKey);
-      }
+      if (oldPoll) { oldPoll.subs.delete(socket); maybeCleanupPoller(oldKey); }
       socketToKey.delete(socket.id);
     }
 
@@ -588,15 +426,16 @@ io.on('connection', socket => {
     poller.subs.add(socket);
     socketToKey.set(socket.id, key);
 
-    const payload = {
+    socket.emit('update', {
       nearest: null,
-      // prefer the raw full list so clients can render all aircraft immediately
       others: poller.rawOthers || poller.cachedOthers || [],
       othersTotal: poller.othersTotal || 0,
       now: Date.now(),
-      showOthersExpanded: SHOW_OTHERS_EXPANDED
-    };
-    socket.emit('update', payload);
+      showOthersExpanded: SHOW_OTHERS_EXPANDED,
+      hideGroundVehicles: HIDE_GROUND_VEHICLES,
+      themeMode: THEME_MODE,
+      defaultMapZoom: DEFAULT_MAP_ZOOM
+    });
 
     console.log(`[socket] ${socket.id} subscribed -> key=${key}`);
   });
@@ -605,10 +444,7 @@ io.on('connection', socket => {
     const k = socketToKey.get(socket.id);
     if (!k) return;
     const p = pollers.get(k);
-    if (p) {
-      p.subs.delete(socket);
-      maybeCleanupPoller(k);
-    }
+    if (p) { p.subs.delete(socket); maybeCleanupPoller(k); }
     socketToKey.delete(socket.id);
     console.log(`[socket] ${socket.id} unsubscribed from ${k}`);
   });
@@ -617,10 +453,7 @@ io.on('connection', socket => {
     const k = socketToKey.get(socket.id);
     if (k) {
       const p = pollers.get(k);
-      if (p) {
-        p.subs.delete(socket);
-        maybeCleanupPoller(k);
-      }
+      if (p) { p.subs.delete(socket); maybeCleanupPoller(k); }
       socketToKey.delete(socket.id);
     }
     console.log('[socket] disconnect', socket.id);
@@ -635,10 +468,9 @@ app.get('/__debug/pollers', (req, res) => {
   res.json({ pollers: info, tokens: { capacity: bucket.capacity, tokens: bucket.tokens } });
 });
 
-/* Serve static and SPA fallback (after API routes above) */
 app.use(express.static(path.join(__dirname, 'client', 'dist')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'client', 'dist', 'index.html')));
 
 server.listen(PORT, () => {
-  console.log(`Server listening on ${PORT}. POLL_MS=${POLL_MS} OTHER_POLL_MS=${OTHER_POLL_MS} OTHERS_LIMIT=${OTHERS_LIMIT} MAX_REQS_PER_MIN=${MAX_REQUESTS_PER_MIN}`);
+  console.log(`Server listening on ${PORT}. POLL_MS=${POLL_MS} OTHER_POLL_MS=${OTHER_POLL_MS} OTHERS_LIMIT=${OTHERS_LIMIT} MAX_REQS_PER_MIN=${MAX_REQUESTS_PER_MIN} THEME_MODE=${THEME_MODE} DEFAULT_MAP_ZOOM=${DEFAULT_MAP_ZOOM}`);
 });
