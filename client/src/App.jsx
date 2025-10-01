@@ -123,6 +123,7 @@ export default function App() {
   const [othersTotal, setOthersTotal] = useState(0);
   const [showOthersList, setShowOthersList] = useState(false);
   const [status, setStatus] = useState('connecting');
+  const [hideGroundVehicles, setHideGroundVehicles] = useState(false);
 
   const socketRef = useRef(null);
   const lastPosRef = useRef(null);
@@ -151,11 +152,16 @@ export default function App() {
       console.error('socket error', e);
     });
 
-    socket.on('update', ({ nearest: n, others: o, othersTotal: total, showOthersExpanded }) => {
+    socket.on('update', ({ nearest: n, others: o, othersTotal: total, showOthersExpanded, hideGroundVehicles }) => {
       // Set default expanded state on first update only
       if (showOthersExpanded !== undefined && !hasSetInitialExpanded.current) {
         setShowOthersList(showOthersExpanded);
         hasSetInitialExpanded.current = true;
+      }
+
+      // Set hide ground vehicles flag
+      if (hideGroundVehicles !== undefined) {
+        setHideGroundVehicles(hideGroundVehicles);
       }
 
       if (!n) {
@@ -204,6 +210,13 @@ export default function App() {
   }, []);
 
   const shown = nearest;
+
+  // Filter out Category C aircraft from the list if hideGroundVehicles is enabled
+  const filteredOthers = hideGroundVehicles 
+    ? others.filter(o => !o.category || !o.category.startsWith('C'))
+    : others;
+
+  const displayedOthersCount = filteredOthers.length;
 
   return (
     <div className="app">
@@ -282,13 +295,18 @@ export default function App() {
           <p>
             <strong style={{cursor:'pointer'}} onClick={() => setShowOthersList(s => !s)}>
               Other planes nearby: {othersTotal}
+              {hideGroundVehicles && filteredOthers.length !== othersTotal && (
+                <span style={{color:'var(--muted)', fontSize:13, marginLeft:6}}>
+                  ({displayedOthersCount} shown, ground vehicles hidden)
+                </span>
+              )}
             </strong>
           </p>
 
           {showOthersList && (
             <div style={{maxHeight:260, overflow:'auto', marginTop:8, fontSize:13}}>
-              {others.length === 0 && <div style={{color:'var(--muted)'}}>No other planes returned.</div>}
-              {others.map((o, i) => (
+              {filteredOthers.length === 0 && <div style={{color:'var(--muted)'}}>No other planes returned.</div>}
+              {filteredOthers.map((o, i) => (
                 <div key={o.hex || `${o.lat}-${o.lon}-${i}`} style={{padding:'8px 6px', borderBottom:'1px solid rgba(0,0,0,0.04)'}}>
                   <div style={{fontWeight:700, display:'flex', justifyContent:'space-between', alignItems:'center', gap:8}}>
                     <div style={{display:'flex', gap:10, alignItems:'center', minWidth:0}}>
@@ -310,15 +328,20 @@ export default function App() {
                     </div>
                     <div style={{marginTop:6}}>
                       { o.from_obj ? renderAirportShort(o.from_obj) : (o.from || '—') }
-                      <span style={{opacity:0.85}}> -> </span>
+                      <span style={{opacity:0.85}}> → </span>
                       { o.to_obj ? renderAirportShort(o.to_obj) : (o.to || '—') }
                     </div>
                   </div>
                 </div>
               ))}
 
-              {othersTotal > others.length && (
-                <div style={{padding:10, color:'var(--muted)', textAlign:'center'}}>… showing {others.length} of {othersTotal}</div>
+              {othersTotal > displayedOthersCount && (
+                <div style={{padding:10, color:'var(--muted)', textAlign:'center'}}>
+                  … showing {displayedOthersCount} of {othersTotal}
+                  {hideGroundVehicles && (
+                    <span> (ground vehicles hidden)</span>
+                  )}
+                </div>
               )}
             </div>
           )}
