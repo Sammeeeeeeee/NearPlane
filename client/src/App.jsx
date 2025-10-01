@@ -4,7 +4,6 @@ import MapPlane from './MapPlane';
 import './style.css';
 import logo from './logo.svg';
 
-/* Utility: haversine distance in km */
 function haversineKm(lat1, lon1, lat2, lon2) {
   if (!lat1 || !lon1 || !lat2 || !lon2) return null;
   const R = 6371;
@@ -44,7 +43,6 @@ function renderAirportShort(obj) {
   );
 }
 
-/* StatusDot component (green/red dot with click tooltip) */
 function StatusDot({ status }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef(null);
@@ -79,18 +77,29 @@ function StatusDot({ status }) {
   );
 }
 
-/* Theme switch (on = dark, off = light)
-   - defaults to system preference on first load
-   - persists choice in localStorage under 'nearplane_theme'
-*/
-function ThemeSwitch() {
+function ThemeSwitch({ serverThemeMode }) {
   const [theme, setTheme] = useState(() => {
+    // Check if server has overridden theme mode
+    if (serverThemeMode && serverThemeMode !== 'system') {
+      return serverThemeMode;
+    }
+    
+    // Otherwise check localStorage
     try {
       const stored = localStorage.getItem('nearplane_theme');
       if (stored === 'light' || stored === 'dark') return stored;
     } catch (e) {}
+    
+    // Fall back to system preference
     return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
+
+  useEffect(() => {
+    // If server specifies a theme mode, override local preference
+    if (serverThemeMode && serverThemeMode !== 'system') {
+      setTheme(serverThemeMode);
+    }
+  }, [serverThemeMode]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme === 'dark' ? 'dark' : 'light');
@@ -98,8 +107,13 @@ function ThemeSwitch() {
   }, [theme]);
 
   const onChange = (e) => {
-    setTheme(e.target.checked ? 'dark' : 'light');
+    // Only allow manual changes if server hasn't locked the theme
+    if (!serverThemeMode || serverThemeMode === 'system') {
+      setTheme(e.target.checked ? 'dark' : 'light');
+    }
   };
+
+  const isLocked = serverThemeMode && serverThemeMode !== 'system';
 
   return (
     <div className="theme-toggle" role="toolbar" aria-label="Theme switch">
@@ -108,9 +122,11 @@ function ThemeSwitch() {
           type="checkbox"
           checked={theme === 'dark'}
           onChange={onChange}
+          disabled={isLocked}
           aria-label="Enable dark mode"
+          title={isLocked ? `Theme locked to ${serverThemeMode} mode by server` : 'Toggle theme'}
         />
-        <span className="slider" />
+        <span className={`slider ${isLocked ? 'disabled' : ''}`} />
       </label>
     </div>
   );
@@ -124,6 +140,8 @@ export default function App() {
   const [showOthersList, setShowOthersList] = useState(false);
   const [status, setStatus] = useState('connecting');
   const [hideGroundVehicles, setHideGroundVehicles] = useState(false);
+  const [serverThemeMode, setServerThemeMode] = useState(null);
+  const [defaultMapZoom, setDefaultMapZoom] = useState(11);
 
   const socketRef = useRef(null);
   const lastPosRef = useRef(null);
@@ -131,7 +149,6 @@ export default function App() {
   const hasSetInitialExpanded = useRef(false);
 
   useEffect(() => {
-    // connect to same-origin socket.io
     const socket = io();
     socketRef.current = socket;
 
@@ -152,16 +169,22 @@ export default function App() {
       console.error('socket error', e);
     });
 
-    socket.on('update', ({ nearest: n, others: o, othersTotal: total, showOthersExpanded, hideGroundVehicles }) => {
-      // Set default expanded state on first update only
+    socket.on('update', ({ nearest: n, others: o, othersTotal: total, showOthersExpanded, hideGroundVehicles, themeMode, defaultMapZoom }) => {
       if (showOthersExpanded !== undefined && !hasSetInitialExpanded.current) {
         setShowOthersList(showOthersExpanded);
         hasSetInitialExpanded.current = true;
       }
 
-      // Set hide ground vehicles flag
       if (hideGroundVehicles !== undefined) {
         setHideGroundVehicles(hideGroundVehicles);
+      }
+
+      if (themeMode !== undefined) {
+        setServerThemeMode(themeMode);
+      }
+
+      if (defaultMapZoom !== undefined) {
+        setDefaultMapZoom(defaultMapZoom);
       }
 
       if (!n) {
@@ -211,7 +234,6 @@ export default function App() {
 
   const shown = nearest;
 
-  // Filter out Category C aircraft from the list if hideGroundVehicles is enabled
   const filteredOthers = hideGroundVehicles 
     ? others.filter(o => !o.category || !o.category.startsWith('C'))
     : others;
@@ -224,10 +246,10 @@ export default function App() {
         <div style={{display:'flex', alignItems:'center', gap:8}}>
           <StatusDot status={status} />
           <h1 style={{margin:0}}>NearPlane</h1>
-          <img src={logo} style={{height: 28, width: 'auto'}} />
+          <img src={logo} style={{height: 28, width: 'auto'}} alt="NearPlane logo" />
         </div>
         <div style={{display:'flex', alignItems:'center', gap:8}}>
-          <ThemeSwitch />
+          <ThemeSwitch serverThemeMode={serverThemeMode} />
         </div>
       </header>
 
@@ -297,7 +319,6 @@ export default function App() {
               Other planes nearby: {othersTotal}
               {hideGroundVehicles && filteredOthers.length !== othersTotal && (
                 <span style={{color:'var(--muted)', fontSize:13, marginLeft:6}}>
-                  ({displayedOthersCount} shown, ground vehicles hidden)
                 </span>
               )}
             </strong>
@@ -349,7 +370,7 @@ export default function App() {
         </section>
 
         <section className="map-card">
-          <MapPlane userPos={userPos} aircraft={nearest} others={others} />
+          <MapPlane userPos={userPos} aircraft={nearest} others={others} defaultZoom={defaultMapZoom} />
         </section>
       </main>
     </div>
