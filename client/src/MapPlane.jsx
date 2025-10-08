@@ -25,6 +25,23 @@ function MapInvalidate({ center }) {
   return null;
 }
 
+/**
+ * Ensure the map uses the provided `zoom` whenever it changes.
+ * This actively sets the map view to the provided center+zoom — enforces DEFAULT_MAP_ZOOM from env.
+ */
+function SetZoom({ zoom, center }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!map) return;
+    const z = Number(zoom);
+    if (!Number.isFinite(z)) return;
+    try {
+      map.setView(center, z, { animate: false });
+    } catch (e) {}
+  }, [map, zoom, center]);
+  return null;
+}
+
 // Helper function to format aircraft info for popup
 function formatAircraftInfo(aircraft, userPos) {
   const parts = [];
@@ -133,7 +150,7 @@ function createIconA1(angle = 0, size = 44, color = '#87CEEB', opacity = 1) {
 function createIconA2(angle = 0, size = 44, color = '#4169E1', opacity = 1) {
   const svg = `
     <div style="transform: rotate(${angle}deg); display:flex; align-items:center; justify-content:center; opacity:${opacity};">
-      <svg xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:svg="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 30 30" version="1.1" id="svg822" inkscape:version="0.92.4 (f8dce91, 2019-08-02)" sodipodi:docname="airplane.svg" fill="${color}" transform="rotate(270)"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <defs id="defs816"></defs> <sodipodi:namedview id="base" pagecolor="#ffffff" bordercolor="#666666" borderopacity="1.0" inkscape:pageopacity="0.0" inkscape:pageshadow="2" inkscape:zoom="17.833333" inkscape:cx="15" inkscape:cy="15" inkscape:document-units="px" inkscape:current-layer="layer1" showgrid="true" units="px" inkscape:window-width="1366" inkscape:window-height="713" inkscape:window-x="0" inkscape:window-y="0" inkscape:window-maximized="1" inkscape:lockguides="true" inkscape:snap-global="true"> <inkscape:grid type="xygrid" id="grid816"></inkscape:grid> </sodipodi:namedview> <metadata id="metadata819"> <rdf:RDF> <cc:Work rdf:about=""> <dc:format>image/svg+xml</dc:format> <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"></dc:type> <dc:title> </dc:title> </cc:Work> </rdf:RDF> </metadata> <g inkscape:label="Layer 1" inkscape:groupmode="layer" id="layer1" transform="translate(0,-289.0625)"> <path style="opacity:1;fill:${color};fill-opacity:1;stroke:none;stroke-width:0.5;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" d="m 9.152311,294.0625 3.964824,7.99842 c -1.515168,0.007 -3.662727,0.51835 -5.4609114,1.02444 L 5.2226469,300.10269 C 4.9696321,299.79256 4.8821528,299.63186 4.5839798,299.63184 H 3.5390647 3.0000015 l 2.15233,4.34398 L 3,308.31979 l 0.5390634,-1e-5 h 1.0449149 c 0.2981875,0 0.3856426,-0.16269 0.6386645,-0.4728 l 2.2988191,-2.81719 c 1.8170981,0.51651 4.0300351,1.0515 5.5819981,1.06187 l -3.95115,7.97084 0.999996,-10e-6 1.943348,10e-6 c 0.553998,-10e-6 0.717401,-0.29856 1.187496,-0.87471 l 5.796842,-7.10599 c 4.118952,-0.062 7.373003,-0.92843 7.373008,-2.00551 -2e-6,-1.07501 -3.241889,-1.9405 -7.349574,-2.00551 l -5.820278,-7.13357 c -0.470082,-0.57616 -0.633494,-0.87471 -1.187492,-0.87471 h -1.943348 z" id="rect818" inkscape:connector-curvature="0"></path> </g> </g></svg>
+      <svg xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:svg="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 30 30" version="1.1" id="svg822" inkscape:version="0.92.4 (f8dce91, 2019-08-02)" sodipodi:docname="airplane.svg" fill="${color}" transform="rotate(270)"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <defs id="defs816"></defs> <sodipodi:namedview id="base" pagecolor="#ffffff" bordercolor="#666666" borderopacity="1.0" inkscape:pageopacity="0.0" inkscape:pageshadow="2" inkscape:zoom="17.833333" inkscape:cx="15" inkscape:cy="15" inkscape:document-units="px" inkscape:current-layer="layer1" showgrid="true" units="px" inkscape:window-width="1366" inkscape:window-height="713" inkscape:window-x="0" inkscape:window-y="0" inkscape:window-maximized="1" inkscape:lockguides="true" inkscape:snap-global="true"> <inkscape:grid type="xygrid" id="grid816"></inkscape:grid> </sodipodi:namedview> <metadata id="metadata819"> <rdf:RDF> <cc:Work rdf:about=""> <dc:format>image/svg+xml</dc:format> <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"></dc:type> <dc:title> </dc:title> </cc:Work> </rdf:RDF> </metadata> <g inkscape:label="Layer 1" inkscape:groupmode="layer" id="layer1" transform="translate(0,-289.0625)"> <path style="opacity:1;fill:${color};fill-opacity:1;stroke:none;stroke-width:0.5;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity=1" d="m 9.152311,294.0625 3.964824,7.99842 c -1.515168,0.007 -3.662727,0.51835 -5.4609114,1.02444 L 5.2226469,300.10269 C 4.9696321,299.79256 4.8821528,299.63186 4.5839798,299.63184 H 3.5390647 3.0000015 l 2.15233,4.34398 L 3,308.31979 l 0.5390634,-1e-5 h 1.0449149 c 0.2981875,0 0.3856426,-0.16269 0.6386645,-0.4728 l 2.2988191,-2.81719 c 1.8170981,0.51651 4.0300351,1.0515 5.5819981,1.06187 l -3.95115,7.97084 0.999996,-10e-6 1.943348,10e-6 c 0.553998,-10e-6 0.717401,-0.29856 1.187496,-0.87471 l 5.796842,-7.10599 c 4.118952,-0.062 7.373003,-0.92843 7.373008,-2.00551 -2e-6,-1.07501 -3.241889,-1.9405 -7.349574,-2.00551 l -5.820278,-7.13357 c -0.470082,-0.57616 -0.633494,-0.87471 -1.187492,-0.87471 h -1.943348 z" id="rect818" inkscape:connector-curvature="0"></path> </g> </g></svg>
     </div>
   `;
   return L.divIcon({ html: svg, className: '', iconSize: [size, size], iconAnchor: [size/2, size/2] });
@@ -217,7 +234,7 @@ function createIconB1(angle = 0, size = 44, color = '#F0E68C', opacity = 1) {
 function createIconB2(angle = 0, size = 44, color = '#FFB6C1', opacity = 1) {
   const svg = `
     <div style="transform: rotate(${angle}deg); display:flex; align-items:center; justify-content:center; opacity:${opacity};">
-      <svg viewBox="-3 0 20 20" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" fill="${color}"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <title>hot_air_balloon [#597]</title> <desc>Created with Sketch.</desc> <defs> </defs> <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"> <g id="Dribbble-Light-Preview" transform="translate(-103.000000, -5559.000000)" fill="${color}"> <g id="icons" transform="translate(56.000000, 160.000000)"> <path d="M52,5419 L56,5419 L56,5417 L52,5417 L52,5419 Z M61,5404.84 C61,5410.583 56,5410 55.853,5415 L51.853,5415 C51.706,5410 47,5410.579 47,5404.836 C47,5400.548 50.539,5399 53.853,5399 C57.167,5399 61,5400.551 61,5404.84 L61,5404.84 Z" id="hot_air_balloon-[#597]"> </path> </g> </g> </g> </g></svg>
+      <svg viewBox="-3 0 20 20" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" fill="${color}"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <title>hot_air_balloon [#597]</title> <desc>Created with Sketch.</desc> <defs> </defs> <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"> <g id="Dribbble-Light-Preview" transform="translate(-103.000000, -5559.000000)" fill="${color}"> <g id="icons" transform="translate(56.000000, 160.000000)"> <path d="M52,5419 L56,5419 L56,5417 L52,5417 L52,5419 Z M61,5404.84 C61,5410.583 56,5410 55.853,5415 L51.853,5415 C51.706,5410 47,5410.579 47,5404.836 C47,5400.548 50.539,5399 53.853,5399 C57.167,5399 61,5400.551 61,5404.84 L61,5404.84 Z" id="hot_air_balloon-[#597]"> </path> </g> </g> </g> </div></svg>
     </div>
   `;
   return L.divIcon({ html: svg, className: '', iconSize: [size, size], iconAnchor: [size/2, size/2] });
@@ -315,7 +332,7 @@ function createIconC1(angle = 0, size = 44, color = '#FF0000', opacity = 1) {
 function createIconC2(angle = 0, size = 44, color = '#FFA500', opacity = 1) {
   const svg = `
     <div style="transform: rotate(${angle}deg); display:flex; align-items:center; justify-content:center; opacity:${opacity};">
-      <svg fill="${color}" height="${size}" width="${size}" version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 47.032 47.032" xml:space="preserve"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <g> <path d="M29.395,0H17.636c-3.117,0-5.643,3.467-5.643,6.584v34.804c0,3.116,2.526,5.644,5.643,5.644h11.759 c3.116,0,5.644-2.527,5.644-5.644V6.584C35.037,3.467,32.511,0,29.395,0z M34.05,14.188v11.665l-2.729,0.351v-4.806L34.05,14.188z M32.618,10.773c-1.016,3.9-2.219,8.51-2.219,8.51H16.631l-2.222-8.51C14.41,10.773,23.293,7.755,32.618,10.773z M15.741,21.713 v4.492l-2.73-0.349V14.502L15.741,21.713z M13.011,37.938V27.579l2.73,0.343v8.196L13.011,37.938z M14.568,40.882l2.218-3.336 h13.771l2.219,3.336H14.568z M31.321,35.805v-7.872l2.729-0.355v10.048L31.321,35.805z"></path> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> </g> </g></svg>
+      <svg fill="${color}" height="${size}" width="${size}" version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 47.032 47.032" xml:space="preserve"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <g> <path d="M29.395,0H17.636c-3.117,0-5.643,3.467-5.643,6.584v34.804c0,3.116,2.526,5.644,5.643,5.644h11.759 c3.116,0,5.644-2.527,5.644-5.644V6.584C35.037,3.467,32.511,0,29.395,0z M34.05,14.188v11.665l-2.729,0.351v-4.806L34.05,14.188z M32.618,10.773c-1.016,3.9-2.219,8.51-2.219,8.51H16.631l-2.222-8.51C14.41,10.773,23.293,7.755,32.618,10.773z M15.741,21.713 v4.492l-2.73-0.349V14.502L15.741,21.713z M13.011,37.938V27.579l2.73,0.343v8.196L13.011,37.938z M14.568,40.882l2.218-3.336 h13.771l2.219,3.336H14.568z M31.321,35.805v-7.872l2.729-0.355v10.048L31.321,35.805z"></path> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> </g> </div></svg>
     </div>
   `;
   return L.divIcon({ html: svg, className: '', iconSize: [size, size], iconAnchor: [size/2, size/2] });
@@ -479,14 +496,17 @@ function getAircraftIcon(category, angle = 0, isNearest = false) {
   }
 }
 
-export default function MapPlane({ userPos, aircraft, others = [] }) {
+export default function MapPlane({ userPos, aircraft, others = [], defaultZoom = 11 }) {
+  // coerce defaultZoom to number and fallback to 11
+  const zoom = Number(defaultZoom) || 11;
   const center = userPos ? [userPos.lat, userPos.lon] : [51.623842, -0.269584];
 
   return (
-    <MapContainer center={center} zoom={11} style={{ height: '100%', borderRadius: 8 }}>
+    <MapContainer center={center} zoom={zoom} style={{ height: '100%', borderRadius: 8 }}>
       <TileLayer attribution='© OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
       <Recenter center={center} />
       <MapInvalidate center={center} />
+      <SetZoom zoom={zoom} center={center} />
 
       {userPos && (
         <>
