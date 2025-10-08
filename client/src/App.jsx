@@ -169,7 +169,10 @@ export default function App() {
       console.error('socket error', e);
     });
 
-    socket.on('update', ({ nearest: n, others: o, othersTotal: total, showOthersExpanded, hideGroundVehicles, themeMode, defaultMapZoom }) => {
+    socket.on('update', ({ nearest: n, others: o, othersTotal: total, showOthersExpanded, hideGroundVehicles, themeMode, defaultMapZoom, effectiveLat, effectiveLon }) => {
+      if (effectiveLat !== undefined && effectiveLon !== undefined) {
+        setUserPos({ lat: effectiveLat, lon: effectiveLon });
+      }
       if (showOthersExpanded !== undefined && !hasSetInitialExpanded.current) {
         setShowOthersList(showOthersExpanded);
         hasSetInitialExpanded.current = true;

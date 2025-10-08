@@ -1,12 +1,11 @@
-// server.js - Complete file with theme and zoom env variables
 const express = require('express');
 const path = require('path');
 const http = require('http');
 const { Server } = require('socket.io');
 
 const PORT = process.env.PORT || 80;
-const DEFAULT_LAT = parseFloat(process.env.DEFAULT_LAT || '51.456121');
-const DEFAULT_LON = parseFloat(process.env.DEFAULT_LON || '-0.384506');
+const DEFAULT_LAT = parseFloat(process.env.LAT || '51.456121');
+const DEFAULT_LON = parseFloat(process.env.LON || '-0.384506');
 const DEFAULT_RADIUS = process.env.DEFAULT_RADIUS || '250';
 const POLL_MS = parseInt(process.env.POLL_MS || '5000', 10);
 const OTHER_POLL_MS = parseInt(process.env.OTHER_POLL_MS || '20000', 10);
@@ -14,8 +13,6 @@ const OTHERS_LIMIT = parseInt(process.env.OTHERS_LIMIT || '10', 10);
 const CALLSIGN_TTL = parseInt(process.env.CALLSIGN_TTL || '60000', 10);
 const ROUTESET_TTL = parseInt(process.env.ROUTESET_TTL || '120000', 10);
 const MAX_REQUESTS_PER_MIN = parseInt(process.env.MAX_REQUESTS_PER_MIN || '60', 10);
-const OVERRIDE_LAT = (process.env.OVERRIDE_LAT !== undefined && process.env.OVERRIDE_LAT !== '') ? Number(process.env.OVERRIDE_LAT) : null;
-const OVERRIDE_LON = (process.env.OVERRIDE_LON !== undefined && process.env.OVERRIDE_LON !== '') ? Number(process.env.OVERRIDE_LON) : null;
 const ENRICH_CONCURRENCY = parseInt(process.env.ENRICH_CONCURRENCY || '3', 10);
 const SHOW_OTHERS_EXPANDED = process.env.SHOW_OTHERS_EXPANDED === 'true';
 const HIDE_GROUND_VEHICLES = process.env.HIDE_GROUND_VEHICLES === 'true';
@@ -223,7 +220,7 @@ function ensurePoller(key, lat, lon, radius) {
       const r = await rateLimitedFetch(`https://api.adsb.lol/v2/closest/${encodeURIComponent(lat)}/${encodeURIComponent(lon)}/${encodeURIComponent(radius)}`, { headers: { accept: 'application/json' } });
       if (!r.ok) {
         try { const txt = await r.text(); console.warn('[closest] non-ok', r.status, txt && txt.slice ? txt.slice(0,200) : ''); } catch(e){}
-        return broadcast({ nearest: null, others: state.rawOthers || state.cachedOthers, othersTotal: state.othersTotal, now: Date.now() });
+        return broadcast({ nearest: null, others: state.rawOthers || state.cachedOthers, othersTotal: state.othersTotal, now: Date.now(), effectiveLat: lat, effectiveLon: lon });
       }
       const json = await r.json();
       const nearest = sanitizeAircraft((json.ac && json.ac.length) ? json.ac[0] : null);
@@ -294,10 +291,10 @@ function ensurePoller(key, lat, lon, radius) {
         } catch (e) { console.warn('[point] fetch failed', e && e.message ? e.message : e); }
       }
 
-      broadcast({ nearest, others: state.rawOthers || state.cachedOthers, othersTotal: state.othersTotal, now: json.now || Date.now() });
+      broadcast({ nearest, others: state.rawOthers || state.cachedOthers, othersTotal: state.othersTotal, now: json.now || Date.now(), effectiveLat: lat, effectiveLon: lon });
     } catch (err) {
       console.error('[poller] cycle error', err && err.message ? err.message : err);
-      broadcast({ nearest: null, others: state.rawOthers || state.cachedOthers, othersTotal: state.othersTotal, now: Date.now() });
+      broadcast({ nearest: null, others: state.rawOthers || state.cachedOthers, othersTotal: state.othersTotal, now: Date.now(), effectiveLat: lat, effectiveLon: lon });
     }
   }
 
@@ -410,8 +407,14 @@ io.on('connection', socket => {
 
   socket.on('subscribe', async (opts = {}) => {
     const clientLat = toNumber(opts.lat), clientLon = toNumber(opts.lon);
-    const lat = (OVERRIDE_LAT !== null) ? OVERRIDE_LAT : (clientLat !== null ? clientLat : DEFAULT_LAT);
-    const lon = (OVERRIDE_LON !== null) ? OVERRIDE_LON : (clientLon !== null ? clientLon : DEFAULT_LON);
+    let lat = DEFAULT_LAT;
+    let lon = DEFAULT_LON;
+    if (process.env.LAT === undefined) {
+      lat = (clientLat !== null) ? clientLat : DEFAULT_LAT;
+    }
+    if (process.env.LON === undefined) {
+      lon = (clientLon !== null) ? clientLon : DEFAULT_LON;
+    }
     const radius = opts.radius || DEFAULT_RADIUS;
     const key = makeKey(lat, lon, radius);
 
@@ -434,7 +437,9 @@ io.on('connection', socket => {
       showOthersExpanded: SHOW_OTHERS_EXPANDED,
       hideGroundVehicles: HIDE_GROUND_VEHICLES,
       themeMode: THEME_MODE,
-      defaultMapZoom: DEFAULT_MAP_ZOOM
+      defaultMapZoom: DEFAULT_MAP_ZOOM,
+      effectiveLat: lat,
+      effectiveLon: lon
     });
 
     console.log(`[socket] ${socket.id} subscribed -> key=${key}`);
