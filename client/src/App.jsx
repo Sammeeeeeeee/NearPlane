@@ -220,7 +220,7 @@ export default function App() {
     }
 
     if (!navigator.geolocation) {
-      doSubscribe({ lat: 51.623842, lon: -0.269584 });
+      doSubscribe({ lat: 51.456121, lon: -0.384506 });
       return;
     }
 
@@ -228,7 +228,7 @@ export default function App() {
       doSubscribe({ lat: p.coords.latitude, lon: p.coords.longitude });
     }, (err) => {
       console.warn('geolocation failed, falling back', err);
-      doSubscribe({ lat: 51.623842, lon: -0.269584 });
+      doSubscribe({ lat: 51.456121, lon: -0.384506 });
     }, { enableHighAccuracy: true, maximumAge: 5000 });
   }, []);
 
