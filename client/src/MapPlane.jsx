@@ -25,21 +25,28 @@ function MapInvalidate({ center }) {
   return null;
 }
 
-/**
- * Ensure the map uses the provided `zoom` whenever it changes.
- * This actively sets the map view to the provided center+zoom — enforces DEFAULT_MAP_ZOOM from env.
- */
-function SetZoom({ zoom, center }) {
-  const map = useMap();
-  useEffect(() => {
-    if (!map) return;
-    const z = Number(zoom);
-    if (!Number.isFinite(z)) return;
-    try {
-      map.setView(center, z, { animate: false });
-    } catch (e) {}
-  }, [map, zoom, center]);
-  return null;
+// Helper: haversine distance in km
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const toRad = (v) => v * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// Nearest-category test: must begin with A or B (case-insensitive)
+function isAcceptableNearestCategory(cat) {
+  if (!cat || typeof cat !== 'string') return false;
+  return /^[AaBb]/.test(cat.trim());
+}
+
+// Helper to compare aircraft identity
+function sameAircraft(a, b) {
+  if (!a || !b) return false;
+  if (a.hex && b.hex) return a.hex === b.hex;
+  return a.lat === b.lat && a.lon === b.lon;
 }
 
 // Helper function to format aircraft info for popup
@@ -94,13 +101,7 @@ function formatAircraftInfo(aircraft, userPos) {
   
   // Distance from user
   if (userPos && aircraft.lat && aircraft.lon) {
-    const R = 6371;
-    const toRad = v => v * Math.PI / 180;
-    const dLat = toRad(aircraft.lat - userPos.lat);
-    const dLon = toRad(aircraft.lon - userPos.lon);
-    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(userPos.lat))*Math.cos(toRad(aircraft.lat))*Math.sin(dLon/2)**2;
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    const dist = R * c;
+    const dist = haversineKm(userPos.lat, userPos.lon, aircraft.lat, aircraft.lon);
     parts.push('<div style="margin-bottom: 6px;"><strong>Distance:</strong> ' + dist.toFixed(2) + ' km</div>');
   }
   
@@ -146,7 +147,7 @@ function createIconA1(angle = 0, size = 44, color = '#87CEEB', opacity = 1) {
   return L.divIcon({ html: svg, className: '', iconSize: [size, size], iconAnchor: [size/2, size/2] });
 }
 
-// A2: Small aircraft (15500 to 75000 lbs) - replaced with supplied SVG
+// A2: Small aircraft (15500 to 75000 lbs)
 function createIconA2(angle = 0, size = 44, color = '#4169E1', opacity = 1) {
   const svg = `
     <div style="transform: rotate(${angle}deg); display:flex; align-items:center; justify-content:center; opacity:${opacity};">
@@ -181,7 +182,7 @@ function createIconA4(angle = 0, size = 44, color = '#FF4500', opacity = 1) {
 function createIconA5(angle = 0, size = 44, color = '#8B0000', opacity = 1) {
   const svg = `
     <div style="transform: rotate(${angle}deg); display:flex; align-items:center; justify-content:center; opacity:${opacity};">
-      <svg fill="${color}" viewBox="0 -3.43 122.88 122.88" version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="enable-background:new 0 0 122.88 116.02" xml:space="preserve"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <style type="text/css">.st0{fill-rule:evenodd;clip-rule:evenodd;}</style> <g> <path class="st0" d="M38.14,115.91c0-10.58,5.81-15.56,13.46-21.3l0-27.68L1.37,89.25c0-19.32-6.57-17.9,9.05-27.72l0.15-0.09 V49.37h11.22v5.08l8.24-5.13V35.8h11.22v6.54l10.36-6.45V7.3c0-4.02,4.37-7.3,9.7-7.3l0,0c5.34,0,9.7,3.29,9.7,7.3v28.58 l10.47,6.52V35.8l11.22,0v13.59l8.24,5.13v-5.15l11.21,0v12.14c15.56,9.67,9.61,7.78,9.61,27.74L71.01,66.91v27.58 c8.14,5.43,13.46,9.6,13.46,21.43l-12.81,0.11c-2.93-2.3-4.96-4.05-6.52-5.26c-1.18,0.39-2.48,0.6-3.83,0.6h0 c-1.53,0-2.99-0.27-4.28-0.76c-1.68,1.22-3.9,3.04-7.21,5.42L38.14,115.91L38.14,115.91L38.14,115.91z"></path> </g> </g></svg>
+      <svg fill="${color}" viewBox="0 -3.43 122.88 122.88" version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="enable-background:new 0 0 122.88 116.02" xml:space="preserve"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <style type="text/css">.st0{fill-rule:evenodd;clip-rule:evenodd;}</style> <g> <path class="st0" d="M38.14,115.91c0-10.58,5.81-15.56,13.46-21.3l0-27.68L1.37,89.25c0-19.32-6.57-17.9,9.05-27.72l0.15-0.09 V49.37h11.22v5.08l8.24-5.13V35.8h11.22v6.54l10.36-6.45V7.3c0-4.02,4.37-7.3,9.7-7.3l0,0c5.34,0,9.7,3.29,9.7,7.3v28.58 l10.47,6.52V35.8l11.22,0v13.59l8.24,5.13v-5.15l11.21,0v12.14c15.56,9.67,9.61,7.78,9.61,27.74L71.01,66.91v27.58 c8.14,5.43,13.46,9.6,13.46,21.43l-12.81,0.11c-2.93-2.3-4.96-4.05-6.52-5.26c-1.18,0.39-2.48,0.6-3.83,0.6h0 c-1.53,0-2.99-0.27-4.28-0.76c-1.68,1.22-3.9,3.04-7.21,5.42L38.14,115.91L38.14,115.91L38.14,115.91z"></path> </g> </div></svg>
     </div>
   `;
   return L.divIcon({ html: svg, className: '', iconSize: [size, size], iconAnchor: [size/2, size/2] });
@@ -201,7 +202,7 @@ function createIconA6(angle = 0, size = 44, color = '#FF1493', opacity = 1) {
 function createIconA7(angle = 0, size = 44, color = '#32CD32', opacity = 1) {
   const svg = `
     <div style="transform: rotate(${angle}deg); display:flex; align-items:center; justify-content:center; opacity:${opacity};">
-      <svg fill="${color}" version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 478.874 478.873" xml:space="preserve"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <g> <g> <path d="M463.096,252.605l-133.38-52.861V78.503V47.101c0-4.338-3.519-7.851-7.851-7.851s-7.851,3.513-7.851,7.851v31.402h-11.569 C293.433,32.987,266.884,0,235.512,0c-31.37,0-57.919,32.987-66.938,78.503h-19.416V47.101c0-4.338-3.519-7.851-7.851-7.851 s-7.85,3.513-7.85,7.851v31.402v43.46l-109-43.2c-6.987-2.771-14.597-0.112-16.99,5.933c-2.395,6.045,1.327,13.187,8.312,15.961 l117.678,46.639v80.363v23.551c0,4.341,3.518,7.851,7.85,7.851s7.851-3.51,7.851-7.851V227.66h48.1 c7.64,25.239,14.703,58.196,14.703,94.207v78.502h7.851v39.528c0,8.079,7.027,14.644,15.701,14.644 c8.674,0,15.699-6.564,15.699-14.644v-39.528h7.851v-78.502c0-35.618,6.984-68.655,14.606-94.207h40.347v23.551 c0,4.341,3.519,7.851,7.851,7.851s7.851-3.51,7.851-7.851V227.66v-2.583l124.703,49.425c6.981,2.773,14.596,0.121,16.987-5.935 C473.799,262.512,470.081,255.383,463.096,252.605z M314.015,94.204v99.322l-24.132-9.567 c9.91-19.424,15.877-44.248,15.877-71.307c0-6.297-0.409-12.435-1.03-18.448H314.015z M149.158,94.204h17.132 c-0.621,6.014-1.023,12.151-1.023,18.448c0,7.694,0.486,15.207,1.406,22.468l-17.515-6.939V94.204z M149.158,211.958v-58.436 l23.536,9.327c1.775,5.688,3.829,11.093,6.155,16.186l-0.433-0.148c0,0,6.476,12.457,13.74,33.071H149.158z M278.714,211.958 c0.749-2.18,1.479-4.208,2.22-6.215l15.682,6.215H278.714z"></path> <path d="M266.913,408.219c-4.328,0-7.851,3.518-7.851,7.85v54.954c0,4.332,3.522,7.851,7.851,7.851c4.332,0,7.85-3.519,7.85-7.851 v-54.954C274.762,411.736,271.245,408.219,266.913,408.219z"></path> </g> </g> </g></svg>
+      <svg fill="${color}" version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 478.874 478.873" xml:space="preserve"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <g> <g> <path d="M463.096,252.605l-133.38-52.861V78.503V47.101c0-4.338-3.519-7.851-7.851-7.851s-7.851,3.513-7.851,7.851v31.402h-11.569 C293.433,32.987,266.884,0,235.512,0c-31.37,0-57.919,32.987-66.938,78.503h-19.416V47.101c0-4.338-3.519-7.851-7.851-7.851 s-7.85,3.513-7.85,7.851v31.402v43.46l-109-43.2c-6.987-2.771-14.597-0.112-16.99,5.933c-2.395,6.045,1.327,13.187,8.312,15.961 l117.678,46.639v80.363v23.551c0,4.341,3.518,7.851,7.85,7.851s7.851-3.51,7.851-7.851V227.66h48.1 c7.64,25.239,14.703,58.196,14.703,94.207v78.502h7.851v39.528c0,8.079,7.027,14.644,15.701,14.644 c8.674,0,15.699-6.564,15.699-14.644v-39.528h7.851v-78.502c0-35.618,6.984-68.655,14.606-94.207h40.347v23.551 c0,4.341,3.519,7.851,7.851,7.851s7.851-3.51,7.851-7.851V227.66v-2.583l124.703,49.425c6.981,2.773,14.596,0.121,16.987-5.935 C473.799,262.512,470.081,255.383,463.096,252.605z M314.015,94.204v99.322l-24.132-9.567 c9.91-19.424,15.877-44.248,15.877-71.307c0-6.297-0.409-12.435-1.03-18.448H314.015z M149.158,94.204h17.132 c-0.621,6.014-1.023,12.151-1.023,18.448c0,7.694,0.486,15.207,1.406,22.468l-17.515-6.939V94.204z M149.158,211.958v-58.436 l23.536,9.327c1.775,5.688,3.829,11.093,6.155,16.186l-0.433-0.148c0,0,6.476,12.457,13.74,33.071H149.158z M278.714,211.958 c0.749-2.18,1.479-4.208,2.22-6.215l15.682,6.215H278.714z"></path> <path d="M266.913,408.219c-4.328,0-7.851,3.518-7.851,7.85v54.954c0,4.332,3.522,7.851,7.851,7.851c4.332,0,7.85-3.519,7.85-7.851 v-54.954C274.762,411.736,271.245,408.219,266.913,408.219z"></path> </g> </g></g></div></svg>
     </div>
   `;
   return L.divIcon({ html: svg, className: '', iconSize: [size, size], iconAnchor: [size/2, size/2] });
@@ -332,7 +333,7 @@ function createIconC1(angle = 0, size = 44, color = '#FF0000', opacity = 1) {
 function createIconC2(angle = 0, size = 44, color = '#FFA500', opacity = 1) {
   const svg = `
     <div style="transform: rotate(${angle}deg); display:flex; align-items:center; justify-content:center; opacity:${opacity};">
-      <svg fill="${color}" height="${size}" width="${size}" version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 47.032 47.032" xml:space="preserve"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <g> <path d="M29.395,0H17.636c-3.117,0-5.643,3.467-5.643,6.584v34.804c0,3.116,2.526,5.644,5.643,5.644h11.759 c3.116,0,5.644-2.527,5.644-5.644V6.584C35.037,3.467,32.511,0,29.395,0z M34.05,14.188v11.665l-2.729,0.351v-4.806L34.05,14.188z M32.618,10.773c-1.016,3.9-2.219,8.51-2.219,8.51H16.631l-2.222-8.51C14.41,10.773,23.293,7.755,32.618,10.773z M15.741,21.713 v4.492l-2.73-0.349V14.502L15.741,21.713z M13.011,37.938V27.579l2.73,0.343v8.196L13.011,37.938z M14.568,40.882l2.218-3.336 h13.771l2.219,3.336H14.568z M31.321,35.805v-7.872l2.729-0.355v10.048L31.321,35.805z"></path> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> </g> </div></svg>
+      <svg fill="${color}" height="${size}" width="${size}" version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 47.032 47.032" xml:space="preserve"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <g> <path d="M29.395,0H17.636c-3.117,0-5.643,3.467-5.643,6.584v34.804c0,3.116,2.526,5.644,5.643,5.644h11.759 c3.116,0,5.644-2.527,5.644-5.644V6.584C35.037,3.467,32.511,0,29.395,0z M34.05,14.188v11.665l-2.729,0.351v-4.806L34.05,14.188z M32.618,10.773c-1.016,3.9-2.219,8.51-2.219,8.51H16.631l-2.222-8.51C14.41,10.773,23.293,7.755,32.618,10.773z M15.741,21.713 v4.492l-2.73-0.349V14.502L15.741,21.713z M13.011,37.938V27.579l2.73,0.343v8.196L13.011,37.938z M14.568,40.882l2.218-3.336 h13.771l2.219,3.336H14.568z M31.321,35.805v-7.872l2.729-0.355v10.048L31.321,35.805z"></path> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> <g> </g> </g> </div></svg>
     </div>
   `;
   return L.divIcon({ html: svg, className: '', iconSize: [size, size], iconAnchor: [size/2, size/2] });
@@ -497,16 +498,71 @@ function getAircraftIcon(category, angle = 0, isNearest = false) {
 }
 
 export default function MapPlane({ userPos, aircraft, others = [], defaultZoom = 11 }) {
-  // coerce defaultZoom to number and fallback to 11
-  const zoom = Number(defaultZoom) || 11;
+  // compute center & zoom
   const center = userPos ? [userPos.lat, userPos.lon] : [51.623842, -0.269584];
+  const zoom = Number(defaultZoom) || 11;
+
+  // normalize lists
+  const othersList = Array.isArray(others) ? others.filter(Boolean) : [];
+
+  // Determine the "nearest" plane but it MUST have category starting with A or B.
+  // If incoming aircraft prop already satisfies, use it. Otherwise search others for nearest acceptable category.
+  let nearestPlane = null;
+
+  if (aircraft && isAcceptableNearestCategory(aircraft.category) && aircraft.lat !== undefined && aircraft.lon !== undefined) {
+    nearestPlane = aircraft;
+  } else {
+    // find acceptable candidates from others
+    const candidates = othersList.filter(o => o && isAcceptableNearestCategory(o.category) && o.lat !== undefined && o.lon !== undefined);
+    if (candidates.length > 0) {
+      // choose reference point for distance: userPos if available, otherwise center coords
+      let refLat = center[0];
+      let refLon = center[1];
+      if (userPos && userPos.lat !== undefined && userPos.lon !== undefined) {
+        refLat = userPos.lat;
+        refLon = userPos.lon;
+      } else if (aircraft && aircraft.lat !== undefined && aircraft.lon !== undefined) {
+        // fallback: distance from the server-provided aircraft location if present
+        refLat = aircraft.lat;
+        refLon = aircraft.lon;
+      } else if (candidates[0].lat !== undefined && candidates[0].lon !== undefined) {
+        // last resort: just pick first candidate (no distance metric possible)
+        nearestPlane = candidates[0];
+      }
+
+      if (!nearestPlane) {
+        let best = null;
+        let bestDist = Infinity;
+        for (const c of candidates) {
+          // sanity check lat/lon
+          if (c.lat === undefined || c.lon === undefined) continue;
+          const d = haversineKm(refLat, refLon, c.lat, c.lon);
+          if (d < bestDist) {
+            bestDist = d;
+            best = c;
+          }
+        }
+        nearestPlane = best;
+      }
+    } else {
+      // no acceptable candidate => no nearest plane
+      nearestPlane = null;
+    }
+  }
+
+  // Build the list of others to render (exclude the chosen nearest if it came from others)
+  const othersToRender = othersList.filter(o => {
+    if (!o) return false;
+    if (!nearestPlane) return true;
+    // if same aircraft, exclude it from others render list
+    return !sameAircraft(o, nearestPlane);
+  });
 
   return (
     <MapContainer center={center} zoom={zoom} style={{ height: '100%', borderRadius: 8 }}>
       <TileLayer attribution='© OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
       <Recenter center={center} />
       <MapInvalidate center={center} />
-      <SetZoom zoom={zoom} center={center} />
 
       {userPos && (
         <>
@@ -515,7 +571,7 @@ export default function MapPlane({ userPos, aircraft, others = [], defaultZoom =
         </>
       )}
 
-      {Array.isArray(others) && others.map((o, i) => (
+      {othersToRender.map((o, i) => (
         o && o.lat && o.lon ? (
           <Marker
             key={o.hex || `${o.lat}-${o.lon}-${i}`}
@@ -530,14 +586,15 @@ export default function MapPlane({ userPos, aircraft, others = [], defaultZoom =
         ) : null
       ))}
 
-      {aircraft && aircraft.lat && aircraft.lon && (
+      {nearestPlane && nearestPlane.lat !== undefined && nearestPlane.lon !== undefined && (
         <Marker
-          position={[aircraft.lat, aircraft.lon]}
-          icon={getAircraftIcon(aircraft.category, aircraft.track || 0, true)}
+          key={nearestPlane.hex || `${nearestPlane.lat}-${nearestPlane.lon}-nearest`}
+          position={[nearestPlane.lat, nearestPlane.lon]}
+          icon={getAircraftIcon(nearestPlane.category, nearestPlane.track || 0, true)}
           zIndexOffset={1000}
         >
           <Popup>
-            <div dangerouslySetInnerHTML={{ __html: formatAircraftInfo(aircraft, userPos) }} />
+            <div dangerouslySetInnerHTML={{ __html: formatAircraftInfo(nearestPlane, userPos) }} />
           </Popup>
         </Marker>
       )}
